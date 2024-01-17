@@ -99,36 +99,40 @@ namespace LiveKit
             {
                 await Task.Delay(Constants.TASK_DELAY);
 
-                lock (_lock)
+                if (_pending)
                 {
-                    if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || _data.Length != _tempBuffer.Length)
+                    lock (_lock)
                     {
-                        int size = (int)(_channels * _sampleRate * 0.2);
-                        _buffer = new RingBuffer(size * sizeof(short));
-                        _tempBuffer = new short[_data.Length];
-                        _numChannels = (uint)_channels;
-                        _sampleRate = (uint)_pendingSampleRate;
-                    }
+                        _pending = false;
+                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || _data.Length != _tempBuffer.Length)
+                        {
+                            int size = (int)(_channels * _sampleRate * 0.2);
+                            _buffer = new RingBuffer(size * sizeof(short));
+                            _tempBuffer = new short[_data.Length];
+                            _numChannels = (uint)_channels;
+                            _sampleRate = (uint)_pendingSampleRate;
+                        }
 
 
-                    static float S16ToFloat(short v)
-                    {
-                        return v / 32768f;
-                    }
+                        static float S16ToFloat(short v)
+                        {
+                            return v / 32768f;
+                        }
 
-                    // "Send" the data to Unity
-                    //var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
-                    //int read = _buffer.Read(temp);
+                        // "Send" the data to Unity
+                        //var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
+                        //int read = _buffer.Read(temp);
 
-                    Array.Clear(_data, 0, _data.Length);
-                    for (int i = 0; i < _data.Length; i++)
-                    {
-                        _data[i] = S16ToFloat(_tempBuffer[i]);
+                        Array.Clear(_data, 0, _data.Length);
+                        for (int i = 0; i < _data.Length; i++)
+                        {
+                            _data[i] = S16ToFloat(_tempBuffer[i]);
+                        }
                     }
                 }
             }
         }
-               
+
 
         // Called on the MainThread (See FfiClient)
         private void OnAudioStreamEvent(AudioStreamEvent e)
@@ -142,20 +146,20 @@ namespace LiveKit
             var info = e.FrameReceived.Frame.Info;
             var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
             var frame = new AudioFrame(handle, info);
-            
-                lock (_lock)
-                { 
-                    if (_numChannels == 0)
-                        return;
 
-               
-                    unsafe
-                    {
-                        var uFrame = _resampler.RemixAndResample(frame, _numChannels, _sampleRate);
-                        var data = new Span<byte>(uFrame.Data.ToPointer(), uFrame.Length);
-                        _buffer?.Write(data);
-                    }
+            lock (_lock)
+            {
+                if (_numChannels == 0)
+                    return;
+
+
+                unsafe
+                {
+                    var uFrame = _resampler.RemixAndResample(frame, _numChannels, _sampleRate);
+                    var data = new Span<byte>(uFrame.Data.ToPointer(), uFrame.Length);
+                    _buffer?.Write(data);
                 }
+            }
         }
     }
 }
