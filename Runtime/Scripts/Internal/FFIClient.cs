@@ -42,7 +42,7 @@ namespace LiveKit.Internal
         public event DisconnectReceivedDelegate DisconnectReceived;
         public event RoomEventReceivedDelegate RoomEventReceived;
         public event TrackEventReceivedDelegate TrackEventReceived;
-        public event ParticipantEventReceivedDelegate ParticipantEventReceived;
+       // participant events are not allowed in the fii protocol public event ParticipantEventReceivedDelegate ParticipantEventReceived;
         public event VideoStreamEventReceivedDelegate VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate AudioStreamEventReceived;
 
@@ -160,7 +160,6 @@ namespace LiveKit.Internal
                         Instance.PublishTrackReceived?.Invoke(response.PublishTrack);
                         break;
                     case FfiEvent.MessageOneofCase.RoomEvent:
-                      
                         Instance.RoomEventReceived?.Invoke(response.RoomEvent);
                         break;
                     case FfiEvent.MessageOneofCase.TrackEvent:

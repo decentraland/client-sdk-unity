@@ -103,17 +103,9 @@ namespace LiveKit
 
         async public static Task<LocalVideoTrack> CreateVideoTrack(string name, RtcVideoSource source, Room room)
         {
-            /*var captureOptions = new VideoCaptureOptions();
-            var resolution = new VideoResolution();
-            resolution.Width = 640;
-            resolution.Height = 480;
-            resolution.FrameRate = 30;
-            captureOptions.Resolution = resolution;*/
-
             var createTrack = new CreateVideoTrackRequest();
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
-            //createTrack.Options = captureOptions;
 
             var request = new FfiRequest();
             request.CreateVideoTrack = createTrack;
