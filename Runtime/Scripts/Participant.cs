@@ -82,9 +82,11 @@ namespace LiveKit
 
             var track = (Track)localTrack;
             var publish = new PublishTrackRequest();
-            publish.LocalParticipantHandle = (ulong)Room.LocalParticipant.Handle.DangerousGetHandle();
+            publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
             publish.TrackHandle =   (ulong)track.Handle.DangerousGetHandle();
             publish.Options = options;
+
+            
 
             var request = new FfiRequest();
             request.PublishTrack = publish;
@@ -125,7 +127,7 @@ namespace LiveKit
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
 
-            Debug.LogError("Completed Publishign Track: " + IsError + " " + e.HasError);
+            Debug.LogError("Completed Publishing Track: " + IsError + " " + e.HasError);
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }
     }
