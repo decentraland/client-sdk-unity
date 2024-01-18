@@ -12,7 +12,10 @@ namespace LiveKit
 {
     public class Room
     {
-        public delegate void ParticipantDelegate(RemoteParticipant participant);
+        public delegate void MetaDelegate(string metaData);
+        public delegate void ParticipantDelegate(Participant participant);
+        public delegate void RemoteParticipantDelegate(RemoteParticipant participant);
+        public delegate void LocalPublishDelegate(TrackPublication publication, LocalParticipant participant);
         public delegate void PublishDelegate(RemoteTrackPublication publication, RemoteParticipant participant);
         public delegate void SubscribeDelegate(IRemoteTrack track, RemoteTrackPublication publication, RemoteParticipant participant);
         public delegate void MuteDelegate(TrackPublication publication, Participant participant);
@@ -30,8 +33,12 @@ namespace LiveKit
         private readonly Dictionary<string, RemoteParticipant> _participants = new();
         public IReadOnlyDictionary<string, RemoteParticipant> Participants => _participants;
 
+        public event MetaDelegate RoomMetadataChanged;
         public event ParticipantDelegate ParticipantConnected;
+        public event ParticipantDelegate ParticipantMetadataChanged;
         public event ParticipantDelegate ParticipantDisconnected;
+        public event LocalPublishDelegate LocalTrackPublished;
+        public event LocalPublishDelegate LocalTrackUnpublished;
         public event PublishDelegate TrackPublished;
         public event PublishDelegate TrackUnpublished;
         public event SubscribeDelegate TrackSubscribed;
@@ -64,7 +71,7 @@ namespace LiveKit
             return new ConnectInstruction(resp.Connect.AsyncId, this);
         }
 
-        public void PublishData(byte[] data, string topic, DataPacketKind kind = DataPacketKind.KindLossy)
+        public void PublishData(byte[] data, string topic,  DataPacketKind kind = DataPacketKind.KindLossy)
         {
             var req = new FfiRequest();
 
@@ -118,6 +125,20 @@ namespace LiveKit
             //Utils.Debug(e);
             switch (e.MessageCase)
             {
+                case RoomEvent.MessageOneofCase.RoomMetadataChanged:
+                    {
+                        Metadata = e.RoomMetadataChanged.Metadata;
+                        RoomMetadataChanged?.Invoke(e.RoomMetadataChanged.Metadata);
+                    }
+                    break;
+                case RoomEvent.MessageOneofCase.ParticipantMetadataChanged:
+                    {
+                        var participant = GetParticipant(e.ParticipantNameChanged.ParticipantSid);
+                        participant.SetMeta(e.ParticipantMetadataChanged.Metadata);
+                        if (participant != null) ParticipantMetadataChanged?.Invoke(participant);
+                        else Utils.Debug("Unable to find participant: " + e.ParticipantNameChanged.ParticipantSid + " in Meta data Change Event");
+                    }
+                    break;
                 case RoomEvent.MessageOneofCase.ParticipantConnected:
                     {
                         var participant = CreateRemoteParticipant(e.ParticipantConnected.Info.Info, null, new FfiHandle((IntPtr)e.ParticipantConnected.Info.Handle.Id));
@@ -130,6 +151,31 @@ namespace LiveKit
                         var participant = Participants[info.ParticipantSid];
                         _participants.Remove(info.ParticipantSid);
                         ParticipantDisconnected?.Invoke(participant);
+                    }
+                    break;
+                case RoomEvent.MessageOneofCase.LocalTrackUnpublished:
+                    {
+                        if (LocalParticipant._tracks.ContainsKey(e.LocalTrackUnpublished.PublicationSid))
+                        {
+                            var publication = LocalParticipant._tracks[e.LocalTrackUnpublished.PublicationSid];
+                            LocalTrackUnpublished?.Invoke(publication, LocalParticipant);
+                        }
+                        else
+                        {
+                            Utils.Debug("Unable to find local track after unpublish: " + e.LocalTrackPublished.TrackSid);
+                        }
+                    }
+                    break;
+                case RoomEvent.MessageOneofCase.LocalTrackPublished:
+                    {
+                        if(LocalParticipant._tracks.ContainsKey(e.LocalTrackPublished.TrackSid))
+                        {
+                            var publication = LocalParticipant._tracks[e.LocalTrackPublished.TrackSid];
+                            LocalTrackPublished?.Invoke(publication, LocalParticipant);
+                        } else
+                        {
+                            Utils.Debug("Unable to find local track after publish: " + e.LocalTrackPublished.TrackSid);
+                        }
                     }
                     break;
                 case RoomEvent.MessageOneofCase.TrackPublished:
@@ -252,8 +298,6 @@ namespace LiveKit
             Utils.Debug(info);
 
             Handle = new FfiHandle((IntPtr)roomHandle.Id);
-          
-
             UpdateFromInfo(info); 
             
             LocalParticipant = new LocalParticipant(participant.Info, this, new FfiHandle((IntPtr)participant.Handle.Id));
@@ -270,7 +314,6 @@ namespace LiveKit
         {
             FfiClient.Instance.DisconnectReceived -= OnDisconnectReceived;
             Utils.Debug($"OnDisconnect.... {e}");
-
         }
 
         internal void OnDisconnect()

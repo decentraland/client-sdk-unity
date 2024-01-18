@@ -18,6 +18,10 @@ namespace LiveKit
         public string Identity => _info.Identity;
         public string Name => _info.Name;
         public string Metadata => _info.Metadata;
+        public void SetMeta(string meta)
+        {
+            _info.Metadata = meta;
+        }
 
         internal FfiHandle Handle;
 
@@ -46,7 +50,7 @@ namespace LiveKit
             Handle = handle;
             UpdateInfo(info);
         }
-
+      
         internal void UpdateInfo(ParticipantInfo info)
         {
             _info = info;
@@ -110,7 +114,7 @@ namespace LiveKit
         internal PublishTrackInstruction(ulong asyncId)
         {
             _asyncId = asyncId;
-            FfiClient.Instance.PublishTrackReceived += OnPublish;
+            FfiClient.Instance.PublishTrackReceived += OnPublish; 
         }
 
         void OnPublish(PublishTrackCallback e)
