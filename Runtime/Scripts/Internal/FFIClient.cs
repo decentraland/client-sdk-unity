@@ -135,13 +135,15 @@ namespace LiveKit.Internal
         {
             var respData = new Span<byte>(data.ToPointer(), size);
             var response = FfiEvent.Parser.ParseFrom(respData);
-        
 
+            Utils.Debug("Callback...");
             // Run on the main thread, the order of execution is guaranteed by Unity
             // It uses a Queue internally
             if(Instance != null && Instance._context!=null) Instance._context.Post((resp) =>
             {
                 var response = resp as FfiEvent;
+
+                Utils.Debug("Callback: " + response.MessageCase);
                 switch (response.MessageCase)
                 {
                     case FfiEvent.MessageOneofCase.PublishData:
@@ -153,6 +155,7 @@ namespace LiveKit.Internal
                         Instance.PublishTrackReceived?.Invoke(response.PublishTrack);
                         break;
                     case FfiEvent.MessageOneofCase.RoomEvent:
+                        Utils.Debug("Call back on room event: " + response.RoomEvent.MessageCase);
                         Instance.RoomEventReceived?.Invoke(response.RoomEvent);
                         break;
                     case FfiEvent.MessageOneofCase.TrackEvent:
