@@ -30,7 +30,7 @@ namespace LiveKit
         private bool _pending = false;
         private object _lock = new object();
 
-        public RtcAudioSource(AudioSource source)
+        public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
         {
             var newAudioSource = new NewAudioSourceRequest();
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
@@ -42,8 +42,7 @@ namespace LiveKit
 
             _info = resp.NewAudioSource.Source.Info;
             _handle = new FfiHandle((IntPtr)resp.NewAudioSource.Source.Handle.Id);
-            UpdateSource(source);
-
+            UpdateSource(source, audioFilter);
         }
 
         public void Start()
@@ -108,13 +107,13 @@ namespace LiveKit
             }
         }
 
-        private void UpdateSource(AudioSource source)
+        private void UpdateSource(AudioSource source, AudioFilter audioFilter)
         {
             _audioSource = source;
-            _audioFilter = source.gameObject.AddComponent<AudioFilter>();
+            _audioFilter = audioFilter;
             //_audioFilter.hideFlags = HideFlags.HideInInspector;
             _audioFilter.AudioRead += OnAudioRead;
-            source.Play();
+            _audioSource.Play();
         }
 
         private float[] _data;
