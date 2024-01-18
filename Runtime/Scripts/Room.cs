@@ -118,11 +118,10 @@ namespace LiveKit
 
             if (e.RoomHandle != (ulong)Handle.DangerousGetHandle())
             {
-                //Debug.LogError("Ignoring. Different Room... ");
+                Debug.LogError("Ignoring. Different Room... " + e);
                 return;
             }
             Utils.Debug($"Room {Name} Event Type: {e.MessageCase}   ---> ({e.RoomHandle} <=> {(ulong)Handle.DangerousGetHandle()})");
-            //Utils.Debug(e);
             switch (e.MessageCase)
             {
                 case RoomEvent.MessageOneofCase.RoomMetadataChanged:

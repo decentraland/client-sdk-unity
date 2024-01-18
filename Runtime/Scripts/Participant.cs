@@ -124,6 +124,8 @@ namespace LiveKit
 
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
+
+            Debug.LogError("Completed Publishign Track: " + IsError + " " + e.HasError);
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }
     }
