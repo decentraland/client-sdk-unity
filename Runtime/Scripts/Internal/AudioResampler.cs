@@ -15,26 +15,17 @@ namespace LiveKit
             get { return _handle; }
         }
 
-        private CancellationToken _canceltoken;
-
-        public AudioResampler(CancellationToken canceltoken)
+        public AudioResampler()
         {
             var newResampler = new NewAudioResamplerRequest();
             var request = new FfiRequest();
             request.NewAudioResampler = newResampler;
-            _canceltoken = canceltoken;
-            Init(request);
-        }
-
-        async void Init(FfiRequest request)
-        {
-            var res = await FfiClient.SendRequest(request);
+            var res = FfiClient.SendRequest(request);
             _handle = new FfiHandle((IntPtr)res.NewAudioResampler.Resampler.Handle.Id);
         }
 
-        async public Task<AudioFrame> RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate) {
+        public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate) {
 
-            if (_canceltoken.IsCancellationRequested) return null;
             var remix = new RemixAndResampleRequest();
             remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
             remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle()};
@@ -44,10 +35,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.RemixAndResample = remix;
 
-            var res = await FfiClient.SendRequest(request);
-            // Check if the task has been cancelled
-
-            if (_canceltoken.IsCancellationRequested) return null;
+            var res = FfiClient.SendRequest(request);
             var bufferInfo = res.RemixAndResample.Buffer;
             var handle = new FfiHandle((IntPtr)bufferInfo.Handle.Id);
             return new AudioFrame(handle, remix.Buffer);

@@ -56,10 +56,8 @@ namespace LiveKit
 
         internal FfiHandle Handle;
 
-        async public Task<ConnectInstruction> Connect(string url, string token, CancellationToken canceltoken)
+        public ConnectInstruction Connect(string url, string token)
         {
-            if (canceltoken.IsCancellationRequested) return null;
-
             var connect = new ConnectRequest();
             connect.Url = url;
             connect.Token = token;
@@ -68,9 +66,8 @@ namespace LiveKit
             request.Connect = connect;
 
             Utils.Debug("Connect....");
-            var resp = await FfiClient.SendRequest(request);
+            var resp = FfiClient.SendRequest(request);
             Utils.Debug($"Connect response.... {resp}");
-            if (canceltoken.IsCancellationRequested) return null;
             return new ConnectInstruction(resp.Connect.AsyncId, this);
         }
 
