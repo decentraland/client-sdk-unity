@@ -71,9 +71,8 @@ namespace LiveKit
             return new ConnectInstruction(resp.Connect.AsyncId, this);
         }
 
-        public async Task<bool> PublishData(byte[] data, string topic, CancellationToken token, DataPacketKind kind = DataPacketKind.KindLossy)
+        public void PublishData(byte[] data, string topic,  DataPacketKind kind = DataPacketKind.KindLossy)
         {
-            if (token.IsCancellationRequested) return false;
             var req = new FfiRequest();
 
             GCHandle pinnedArray = GCHandle.Alloc(data, GCHandleType.Pinned);
@@ -90,10 +89,8 @@ namespace LiveKit
             request.PublishData = dataRequest;
 
             Utils.Debug("Sending message: " + topic);
-            await FfiClient.SendRequest(request);
+            FfiClient.SendRequest(request);
             pinnedArray.Free();
-
-            return true;
         }
 
         public void Disconnect()
