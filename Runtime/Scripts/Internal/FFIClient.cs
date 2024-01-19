@@ -73,7 +73,7 @@ namespace LiveKit.Internal
         }
 #endif
 
-        public static void Quit()
+        private static void Quit()
         {
 #if UNITY_EDITOR
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;

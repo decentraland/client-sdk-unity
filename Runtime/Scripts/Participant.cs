@@ -77,9 +77,6 @@ namespace LiveKit
 
         public PublishTrackInstruction PublishTrack(ILocalTrack localTrack, TrackPublishOptions options)
         {
-            if (Room == null)
-                throw new Exception("room is invalid");
-
             var track = (Track)localTrack;
             var publish = new PublishTrackRequest();
             publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
@@ -91,7 +88,6 @@ namespace LiveKit
             var request = new FfiRequest();
             request.PublishTrack = publish;
             var resp = FfiClient.SendRequest(request);
-
             if (resp!=null)
                 return new PublishTrackInstruction(resp.PublishTrack.AsyncId);
             return null;
@@ -127,7 +123,7 @@ namespace LiveKit
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
 
-            Debug.LogError("Completed Publishing Track: " + IsError + " " + e.HasError);
+            Utils.Debug("Completed Publishing Track: " + IsError + " " + e.HasError);
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }
     }

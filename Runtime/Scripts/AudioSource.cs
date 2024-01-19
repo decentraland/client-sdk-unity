@@ -29,6 +29,9 @@ namespace LiveKit
         private Thread _readAudioThread;
         private bool _pending = false;
         private object _lock = new object();
+        private float[] _data;
+        private int _channels;
+        private int _sampleRate;
 
         public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
         {
@@ -111,14 +114,9 @@ namespace LiveKit
         {
             _audioSource = source;
             _audioFilter = audioFilter;
-            //_audioFilter.hideFlags = HideFlags.HideInInspector;
             _audioFilter.AudioRead += OnAudioRead;
             _audioSource.Play();
         }
-
-        private float[] _data;
-        private int _channels;
-        private int _sampleRate;
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
