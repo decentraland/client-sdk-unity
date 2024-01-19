@@ -61,6 +61,7 @@ namespace LiveKit
             var connect = new ConnectRequest();
             connect.Url = url;
             connect.Token = token;
+            connect.Options = new RoomOptions() { AutoSubscribe = false };
 
             var request = new FfiRequest();
             request.Connect = connect;
@@ -184,6 +185,7 @@ namespace LiveKit
                         participant._tracks.Add(publication.Sid, publication);
                         participant.OnTrackPublished(publication);
                         TrackPublished?.Invoke(publication, participant);
+                        publication.SetSubscribed(true);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.TrackUnpublished:
@@ -320,6 +322,12 @@ namespace LiveKit
             FfiClient.Instance.RoomEventReceived -= OnEventReceived;
         }
 
+        internal void OnLocalTrackPublished(OwnedTrackPublication p)
+        {
+            var publication = new LocalTrackPublication(p.Info);
+            LocalParticipant._tracks.Add(publication.Sid, publication);
+        }
+
         RemoteParticipant CreateRemoteParticipant(ParticipantInfo info, RepeatedField<OwnedTrackPublication> publications, FfiHandle handle)
         {
             var participant = new RemoteParticipant(info, this, handle);
@@ -331,6 +339,7 @@ namespace LiveKit
                 {
                     var publication = new RemoteTrackPublication(pubInfo.Info);
                     participant._tracks.Add(publication.Sid, publication);
+                    publication.SetSubscribed(true);
                 }
             }
 

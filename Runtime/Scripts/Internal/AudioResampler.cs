@@ -8,7 +8,6 @@ namespace LiveKit
 {
     public class AudioResampler
     {
-        //internal readonly FfiHandle Handle;
         private FfiHandle _handle;
         internal FfiHandle Handle
         {
@@ -28,7 +27,8 @@ namespace LiveKit
 
             var remix = new RemixAndResampleRequest();
             remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
-            remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle()};
+            remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle() };
+            //remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle(), NumChannels = frame.NumChannels, SampleRate = frame.SampleRate/100, SamplesPerChannel = frame.SamplesPerChannel};
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;
 

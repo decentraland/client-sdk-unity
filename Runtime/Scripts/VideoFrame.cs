@@ -136,12 +136,8 @@ namespace LiveKit
             if (!IsValid)
                 throw new InvalidOperationException("the handle is invalid");
 
-            //var handleId = new FFIHandleId();
-            //handleId.Id = (ulong)Handle.DangerousGetHandle();
-
             var argb = new ToArgbRequest();
             //argb.Buffer = handleId;
-            //argb. = handleId;
             argb.DstPtr = (ulong)dst;
             argb.DstFormat = format;
             argb.DstStride = dstStride;

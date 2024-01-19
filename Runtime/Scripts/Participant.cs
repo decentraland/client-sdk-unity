@@ -89,7 +89,7 @@ namespace LiveKit
             request.PublishTrack = publish;
             var resp = FfiClient.SendRequest(request);
             if (resp!=null)
-                return new PublishTrackInstruction(resp.PublishTrack.AsyncId);
+                return new PublishTrackInstruction(resp.PublishTrack.AsyncId, Room);
             return null;
         }
     }
@@ -108,11 +108,14 @@ namespace LiveKit
         public bool IsError { protected set; get; }
 
         private ulong _asyncId;
+        private Room _room;
 
-        internal PublishTrackInstruction(ulong asyncId)
+
+        internal PublishTrackInstruction(ulong asyncId, Room room)
         {
             _asyncId = asyncId;
-            FfiClient.Instance.PublishTrackReceived += OnPublish; 
+            _room = room;
+            FfiClient.Instance.PublishTrackReceived += OnPublish;
         }
 
         void OnPublish(PublishTrackCallback e)
@@ -123,7 +126,10 @@ namespace LiveKit
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
 
-            Utils.Debug("Completed Publishing Track: " + IsError + " " + e.HasError);
+
+            Utils.Debug("TODO Completed Publishing Track: " + IsError + " " + e.HasError);
+
+
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }
     }

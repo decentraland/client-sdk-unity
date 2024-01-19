@@ -15,6 +15,7 @@ namespace LiveKit
         bool Muted { get; }
         WeakReference<Room> Room { get; }
         WeakReference<Participant> Participant { get; }
+        FfiHandle Handle { get; }
     }
 
     public interface ILocalTrack : ITrack
@@ -50,12 +51,13 @@ namespace LiveKit
 
         // IsOwned is true if C# owns the handle
         public bool IsOwned => Handle != null && !Handle.IsInvalid;
+        public FfiHandle Handle { get { return _handle; } }
 
-        internal readonly FfiHandle Handle;
+        internal readonly FfiHandle _handle;
 
         internal Track(FfiHandle handle, TrackInfo info, Room room, Participant participant)
         {
-            Handle = handle;
+            _handle = handle;
             Room = new WeakReference<Room>(room);
             Participant = new WeakReference<Participant>(participant);
             UpdateInfo(info);
