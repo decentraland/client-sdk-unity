@@ -52,8 +52,8 @@ namespace LiveKit
         // IsOwned is true if C# owns the handle
         public bool IsOwned => Handle != null && !Handle.IsInvalid;
         public FfiHandle Handle { get { return _handle; } }
-
-        internal readonly FfiHandle _handle;
+        private FfiHandle _handle;
+        private CancellationToken _token;
 
         internal Track(FfiHandle handle, TrackInfo info, Room room, Participant participant)
         {

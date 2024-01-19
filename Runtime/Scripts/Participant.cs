@@ -23,7 +23,11 @@ namespace LiveKit
             _info.Metadata = meta;
         }
 
-        internal FfiHandle Handle;
+        private FfiHandle _handle;
+        internal FfiHandle Handle
+        {
+            get { return _handle; }
+        }
 
         public bool Speaking { private set; get; }
         public float AudioLevel { private set; get; }
@@ -47,7 +51,7 @@ namespace LiveKit
         protected Participant(ParticipantInfo info, Room room, FfiHandle handle)
         {
             _room =  room;
-            Handle = handle;
+            _handle = handle;
             UpdateInfo(info);
         }
       
@@ -75,7 +79,7 @@ namespace LiveKit
 
         internal LocalParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle) { }
 
-        public PublishTrackInstruction PublishTrack(ILocalTrack localTrack, TrackPublishOptions options)
+        public PublishTrackInstruction PublishTrack(ILocalTrack localTrack, TrackPublishOptions options, CancellationToken token)
         {
             var track = (Track)localTrack;
             var publish = new PublishTrackRequest();
@@ -83,13 +87,11 @@ namespace LiveKit
             publish.TrackHandle =   (ulong)track.Handle.DangerousGetHandle();
             publish.Options = options;
 
-            
-
             var request = new FfiRequest();
             request.PublishTrack = publish;
             var resp = FfiClient.SendRequest(request);
             if (resp!=null)
-                return new PublishTrackInstruction(resp.PublishTrack.AsyncId, Room);
+                return new PublishTrackInstruction(resp.PublishTrack.AsyncId, Room, token);
             return null;
         }
     }
@@ -102,16 +104,13 @@ namespace LiveKit
         internal RemoteParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle) { }
     }
 
-    public sealed class PublishTrackInstruction 
+    public sealed class PublishTrackInstruction : AsyncInstruction
     {
-        public bool IsDone { protected set; get; }
-        public bool IsError { protected set; get; }
-
         private ulong _asyncId;
         private Room _room;
 
 
-        internal PublishTrackInstruction(ulong asyncId, Room room)
+        internal PublishTrackInstruction(ulong asyncId, Room room, CancellationToken token) : base(token)
         {
             _asyncId = asyncId;
             _room = room;
@@ -125,10 +124,6 @@ namespace LiveKit
 
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
-
-
-            Utils.Debug("TODO Completed Publishing Track: " + IsError + " " + e.HasError);
-
 
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }

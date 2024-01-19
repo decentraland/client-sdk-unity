@@ -56,11 +56,11 @@ namespace LiveKit
 
         internal FfiHandle Handle;
 
-        public ConnectInstruction Connect(string url, string token)
+        public ConnectInstruction Connect(string url, string authToken, CancellationToken cancelToken)
         {
             var connect = new ConnectRequest();
             connect.Url = url;
-            connect.Token = token;
+            connect.Token = authToken;
             connect.Options = new RoomOptions() { AutoSubscribe = false };
 
             var request = new FfiRequest();
@@ -69,7 +69,7 @@ namespace LiveKit
             Utils.Debug("Connect....");
             var resp = FfiClient.SendRequest(request);
             Utils.Debug($"Connect response.... {resp}");
-            return new ConnectInstruction(resp.Connect.AsyncId, this);
+            return new ConnectInstruction(resp.Connect.AsyncId, this, cancelToken);
         }
 
         public void PublishData(byte[] data, string topic,  DataPacketKind kind = DataPacketKind.KindLossy)
@@ -317,16 +317,16 @@ namespace LiveKit
             Utils.Debug($"OnDisconnect.... {e}");
         }
 
-        internal void OnDisconnect()
+        private void OnDisconnect()
         {
             FfiClient.Instance.RoomEventReceived -= OnEventReceived;
         }
 
-        internal void OnLocalTrackPublished(OwnedTrackPublication p)
-        {
-            var publication = new LocalTrackPublication(p.Info);
-            LocalParticipant._tracks.Add(publication.Sid, publication);
-        }
+        //private void OnLocalTrackPublished(OwnedTrackPublication p)
+        //{
+        //    var publication = new LocalTrackPublication(p.Info);
+        //    LocalParticipant._tracks.Add(publication.Sid, publication);
+        //}
 
         RemoteParticipant CreateRemoteParticipant(ParticipantInfo info, RepeatedField<OwnedTrackPublication> publications, FfiHandle handle)
         {
@@ -357,15 +357,12 @@ namespace LiveKit
 
     }
 
-    public sealed class ConnectInstruction
+    public sealed class ConnectInstruction : AsyncInstruction
     {
-        public bool IsDone { protected set; get; }
-        public bool IsError { protected set; get; }
-
         private ulong _asyncId;
         private Room _room;
 
-        internal ConnectInstruction(ulong asyncId, Room room)
+        internal ConnectInstruction(ulong asyncId, Room room, CancellationToken token) : base(token)
         {
             _asyncId = asyncId;
             _room = room;
@@ -379,6 +376,8 @@ namespace LiveKit
                 return;
 
             FfiClient.Instance.ConnectReceived -= OnConnect;
+
+            if (Token.IsCancellationRequested) return;
 
             bool success = string.IsNullOrEmpty(e.Error);
             Utils.Debug("Connection success: " + success);
