@@ -8,7 +8,6 @@ namespace LiveKit
     {
         private AudioFrameBufferInfo _info;
 
-        //internal readonly FfiHandle Handle;
         private FfiHandle _handle;
         internal FfiHandle Handle
         {

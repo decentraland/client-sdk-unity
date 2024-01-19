@@ -16,7 +16,6 @@ namespace LiveKit
         private AudioSource _audioSource;
         private AudioFilter _audioFilter;
 
-        //internal readonly FfiHandle Handle;
         private FfiHandle _handle;
         internal FfiHandle Handle
         {
@@ -34,6 +33,8 @@ namespace LiveKit
         {
             var newAudioSource = new NewAudioSourceRequest();
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
+            //newAudioSource.NumChannels = 2;
+            //newAudioSource.SampleRate = 48000;
 
             var request = new FfiRequest();
             request.NewAudioSource = newAudioSource;
@@ -90,7 +91,8 @@ namespace LiveKit
                     var pushFrame = new CaptureAudioFrameRequest();
                     pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
                     pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Handle.DangerousGetHandle() };
-
+                    //pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Handle.DangerousGetHandle(), NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate, SamplesPerChannel = _frame.SamplesPerChannel };
+                    
                     var request = new FfiRequest();
                     request.CaptureAudioFrame = pushFrame;
 

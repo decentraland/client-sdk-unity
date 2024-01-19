@@ -15,7 +15,6 @@ namespace LiveKit
         public delegate void TextureReceiveDelegate(Texture2D tex2d);
         public delegate void TextureUploadDelegate();
 
-        //internal readonly FfiHandle Handle;
         private FfiHandle _handle;
         internal FfiHandle Handle
         {
