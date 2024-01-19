@@ -93,7 +93,11 @@ namespace LiveKit.Internal
         static void Initialize()
         {
             FFICallbackDelegate callback = FFICallback;
+#if LK_VERBOSE
+            NativeMethods.LiveKitInitialize(callback, true);
+#else
             NativeMethods.LiveKitInitialize(callback, false);
+#endif
             Utils.Debug("FFIServer - Initialized");
         }
 
