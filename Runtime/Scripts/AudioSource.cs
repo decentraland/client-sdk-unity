@@ -88,20 +88,32 @@ namespace LiveKit
 
                 try
                 {
-                    // Don't play the audio locally
-                    Array.Clear(_data, 0, _data.Length);
+                    static short FloatToS16(float v)
+                    {
+                        v *= 32768f;
+                        v = Math.Min(v, 32767f);
+                        v = Math.Max(v, -32768f);
+                        return (short)(v + Math.Sign(v) * 0.5f);
+                    }
 
-                    var pushFrame = new CaptureAudioFrameRequest();
-                    pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
-                    pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Handle.DangerousGetHandle() };
-                    //pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Handle.DangerousGetHandle(), NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate, SamplesPerChannel = _frame.SamplesPerChannel };
-                    
-                    var request = new FfiRequest();
-                    request.CaptureAudioFrame = pushFrame;
+                    unsafe
+                    {
+                        var frameData = new Span<short>(_frame.Data.ToPointer(), _frame.Length / sizeof(short));
+                        for (int i = 0; i < _data.Length; i++)
+                        {
+                            frameData[i] = FloatToS16(_data[i]);
+                        }
 
-                    FfiClient.SendRequest(request);
+                        var pushFrame = new CaptureAudioFrameRequest();
+                        pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
+                        pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Data, NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate, SamplesPerChannel = _frame.SamplesPerChannel };
+                        var request = new FfiRequest();
+                        request.CaptureAudioFrame = pushFrame;
 
-                    //Utils.Debug($"Pushed audio frame with {_data.Length} samples");
+                        FfiClient.SendRequest(request);
+                    }
+                    Utils.Debug($"Pushed audio frame with {_data.Length} sample rate " + _frame.SampleRate + "  num channels "+ _frame.NumChannels + " and samplers per channel "+ _frame.SamplesPerChannel);
+
 
                 }
                 catch (Exception e)
