@@ -70,7 +70,7 @@ namespace LiveKit
         }
 
         /// Used for GC.AddMemoryPressure(Int64)
-        /// TODO(theomonnom): Remove the default implementation when each buffer type is implemented
+        /// TODO(theomonnom): Remove the default implementation when each buffer type is implemented  cc MindTrust_VID
         internal virtual long GetMemorySize()
         {
             return -1;
