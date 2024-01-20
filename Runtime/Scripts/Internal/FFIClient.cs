@@ -116,21 +116,22 @@ namespace LiveKit.Internal
         internal static FfiResponse SendRequest(FfiRequest request)
         {
             var data = request.ToByteArray(); // TODO(theomonnom): Avoid more allocations
-
-            FfiResponse response = null;
             unsafe
             {
                 try
                 {
                     var handle = NativeMethods.FfiNewRequest(data, data.Length, out byte* dataPtr, out int dataLen);
-                    response = FfiResponse.Parser.ParseFrom(new Span<byte>(dataPtr, dataLen));
+                    var response = FfiResponse.Parser.ParseFrom(new Span<byte>(dataPtr, dataLen));
                     handle.Dispose();
+                    return response;
                 }
                 catch (Exception e)
                 {
+                    // Since we are in a thread I want to make sure we catch and log
                     Utils.Error(e);
+                    // But we aren't actually handling this exception so we should re-throw here 
+                    throw e;
                 }
-                return response;
             }
         }
 

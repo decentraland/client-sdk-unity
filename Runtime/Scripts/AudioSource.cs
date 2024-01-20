@@ -43,7 +43,6 @@ namespace LiveKit
             request.NewAudioSource = newAudioSource;
 
             var resp = FfiClient.SendRequest(request);
-
             _info = resp.NewAudioSource.Source.Info;
             _handle = new FfiHandle((IntPtr)resp.NewAudioSource.Source.Handle.Id);
             UpdateSource(source, audioFilter);
