@@ -25,7 +25,7 @@ namespace LiveKit
         private bool _dirty = false;
 
         // Thread for parsing textures
-        Thread _frameThread;
+        private Thread _frameThread;
 
         /// Called when we receive a new frame from the VideoTrack
         public event FrameReceiveDelegate FrameReceived;
@@ -62,7 +62,7 @@ namespace LiveKit
             Init(request);
         }
 
-        void Init(FfiRequest request)
+        private void Init(FfiRequest request)
         {
             var resp = FfiClient.SendRequest(request);
             var streamInfo = resp.NewVideoStream.Stream;

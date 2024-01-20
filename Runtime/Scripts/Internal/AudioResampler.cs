@@ -28,6 +28,7 @@ namespace LiveKit
             var remix = new RemixAndResampleRequest();
             remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
             remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle() };
+            Utils.Debug("TODO MindTrust: Most likely we want this second one and not use the frame's handler. Should be data. Based on AudioSource. Ref Python FFI -mg"); 
             //remix.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong) frame.Handle.DangerousGetHandle(), NumChannels = frame.NumChannels, SampleRate = frame.SampleRate/100, SamplesPerChannel = frame.SamplesPerChannel};
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;

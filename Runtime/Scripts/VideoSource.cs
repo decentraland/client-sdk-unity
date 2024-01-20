@@ -14,7 +14,6 @@ namespace LiveKit
 {
     public abstract class RtcVideoSource
     {
-        //internal readonly FfiHandle Handle;
         private FfiHandle _handle;
         internal FfiHandle Handle
         {
