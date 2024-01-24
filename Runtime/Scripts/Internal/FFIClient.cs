@@ -4,6 +4,7 @@ using UnityEngine;
 using Google.Protobuf;
 using System.Threading;
 using LiveKit.Internal.FFIClients;
+using LiveKit.Internal.FFIClients.Pools;
 using UnityEngine.Pool;
 
 #if UNITY_EDITOR
@@ -20,8 +21,11 @@ namespace LiveKit.Internal
         private static readonly Lazy<FfiClient> instance = new(() => new FfiClient());
         public static FfiClient Instance => instance.Value;
 
-        internal SynchronizationContext _context;
+        internal SynchronizationContext? _context;
+
         private readonly IObjectPool<FfiRequest> ffiRequestPool;
+        private readonly IObjectPool<FfiResponse> ffiResponsePool;
+        private readonly MessageParser<FfiResponse> responseParser;
 
         public event PublishTrackDelegate PublishTrackReceived;
         public event ConnectReceivedDelegate ConnectReceived;
@@ -32,13 +36,27 @@ namespace LiveKit.Internal
         public event VideoStreamEventReceivedDelegate VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate AudioStreamEventReceived;
 
-        public FfiClient() : this(FfiRequestsPool.NewPool())
+        public FfiClient() : this(Pools.NewFfiResponsePool())
         {
         }
 
-        public FfiClient(IObjectPool<FfiRequest> ffiRequestPool)
+        public FfiClient(IObjectPool<FfiResponse> ffiResponsePool) : this(
+            Pools.NewFfiRequestPool(),
+            ffiResponsePool,
+            new MessageParser<FfiResponse>(ffiResponsePool.Get)
+        )
+        {
+        }
+
+        public FfiClient(
+            IObjectPool<FfiRequest> ffiRequestPool,
+            IObjectPool<FfiResponse> ffiResponsePool,
+            MessageParser<FfiResponse> responseParser
+        )
         {
             this.ffiRequestPool = ffiRequestPool;
+            this.responseParser = responseParser;
+            this.ffiResponsePool = ffiResponsePool;
         }
 
         #if UNITY_EDITOR
@@ -118,6 +136,11 @@ namespace LiveKit.Internal
             return response;
         }
 
+        public void Release(FfiResponse response)
+        {
+            ffiResponsePool.Release(response);
+        }
+
         public FfiResponse SendRequest(FfiRequest request)
         {
             try
@@ -134,7 +157,8 @@ namespace LiveKit.Internal
                             out int dataLen
                         );
 
-                        var response = FfiResponse.Parser.ParseFrom(new Span<byte>(dataPtr, dataLen));
+                        var dataSpan = new Span<byte>(dataPtr, dataLen);
+                        var response = responseParser.ParseFrom(dataSpan)!;
                         handle.Dispose();
                         return response;
                     }
