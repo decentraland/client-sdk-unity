@@ -107,6 +107,7 @@ namespace LiveKit.Internal
             // The rust lk implementation should also correctly dispose WebRTC
             var disposeReq = new DisposeRequest();
 
+            //TODO: object pool
             var request = new FfiRequest();
             request.Dispose = disposeReq;
             SendRequest(request);
