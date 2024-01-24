@@ -31,7 +31,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.NewVideoSource = newVideoSource;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
 
             _info = resp.NewVideoSource.Source.Info;
             _handle = new FfiHandle((IntPtr)resp.NewVideoSource.Source.Handle.Id);
@@ -134,7 +134,7 @@ namespace LiveKit
                 var request = new FfiRequest();
                 request.ToI420 = toI420;
 
-                var resp = FfiClient.SendRequest(request);
+                var resp = FfiClient.Instance.SendRequest(request);
                 var bufferInfo = resp.ToI420.Buffer;
                 var buffer = VideoFrameBuffer.Create(new FfiHandle((IntPtr)bufferInfo.Handle.Id), bufferInfo.Info);
 
@@ -151,7 +151,7 @@ namespace LiveKit
                 request = new FfiRequest();
                 request.CaptureVideoFrame = capture;
 
-                FfiClient.SendRequest(request);
+                FfiClient.Instance.SendRequest(request);
                 reading = false;
                 _requestPending = false;
             }

@@ -67,7 +67,7 @@ namespace LiveKit
 
         private void Init(FfiRequest request)
         {
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             var streamInfo = resp.NewVideoStream.Stream;
 
             Handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);

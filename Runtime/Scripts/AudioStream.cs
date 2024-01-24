@@ -46,7 +46,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.NewAudioStream = newAudioStream;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             var streamInfo = resp.NewAudioStream.Stream;
 
             _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);

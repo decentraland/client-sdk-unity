@@ -87,7 +87,7 @@ namespace LiveKit
 
             var request = new FfiRequest();
             request.PublishTrack = publish;
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             return new PublishTrackInstruction(resp.PublishTrack.AsyncId, Room, token);
         }
     }

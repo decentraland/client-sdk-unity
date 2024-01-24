@@ -67,7 +67,7 @@ namespace LiveKit
             request.Connect = connect;
 
             Utils.Debug("Connect....");
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             Utils.Debug($"Connect response.... {resp}");
             return new ConnectInstruction(resp.Connect.AsyncId, this, cancelToken);
         }
@@ -88,7 +88,7 @@ namespace LiveKit
             request.PublishData = dataRequest;
 
             Utils.Debug("Sending message: " + topic);
-            FfiClient.SendRequest(request);
+            FfiClient.Instance.SendRequest(request);
             pinnedArray.Free();
         }
 
@@ -101,7 +101,7 @@ namespace LiveKit
             request.Disconnect = disconnect;
 
             Utils.Debug($"Disconnect.... {disconnect.RoomHandle}");
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             Utils.Debug($"Disconnect response.... {resp}");
         }
 

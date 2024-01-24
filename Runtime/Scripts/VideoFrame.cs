@@ -121,7 +121,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.ToI420 = toi420;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             var newInfo = resp.ToI420.Buffer;
             if (newInfo == null)
                 throw new InvalidOperationException("failed to convert");
@@ -147,7 +147,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.ToArgb = argb;
 
-            FfiClient.SendRequest(request);
+            FfiClient.Instance.SendRequest(request);
         }
     }
 

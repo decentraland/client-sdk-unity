@@ -1,12 +1,7 @@
 using System;
-using System.Collections;
 using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
-using UnityEngine.Rendering;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using System.Threading.Tasks;
 using System.Threading;
 
 namespace LiveKit
@@ -41,7 +36,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.NewAudioSource = newAudioSource;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             _info = resp.NewAudioSource.Source.Info;
             _handle = new FfiHandle((IntPtr)resp.NewAudioSource.Source.Handle.Id);
             UpdateSource(source, audioFilter);
@@ -113,7 +108,7 @@ namespace LiveKit
                         var request = new FfiRequest();
                         request.CaptureAudioFrame = pushFrame;
 
-                        FfiClient.SendRequest(request);
+                        FfiClient.Instance.SendRequest(request);
                     }
 
                     Utils.Debug($"Pushed audio frame with {_data.Length} sample rate "

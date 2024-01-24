@@ -4,7 +4,7 @@ using LiveKit.Proto;
 using UnityEngine;
 using Google.Protobuf;
 using System.Threading;
-using System.Threading.Tasks;
+using LiveKit.Internal.FFIClients;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -30,7 +30,7 @@ namespace LiveKit.Internal
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
-    internal sealed class FfiClient
+    internal sealed class FfiClient : IFFIClient
     {
         private static readonly Lazy<FfiClient> _instance = new Lazy<FfiClient>(() => new FfiClient());
         public static FfiClient Instance => _instance.Value;
@@ -110,11 +110,11 @@ namespace LiveKit.Internal
             //TODO: object pool
             var request = new FfiRequest();
             request.Dispose = disposeReq;
-            SendRequest(request);
+            Instance.SendRequest(request);
             Utils.Debug("FFIServer - Disposed");
         }
 
-        internal static FfiResponse SendRequest(FfiRequest request)
+        public FfiResponse SendRequest(FfiRequest request)
         {
             var data = request.ToByteArray(); // TODO(theomonnom): Avoid more allocations
             unsafe

@@ -19,7 +19,7 @@ namespace LiveKit
             var newResampler = new NewAudioResamplerRequest();
             var request = new FfiRequest();
             request.NewAudioResampler = newResampler;
-            var res = FfiClient.SendRequest(request);
+            var res = FfiClient.Instance.SendRequest(request);
             _handle = new FfiHandle((IntPtr)res.NewAudioResampler.Resampler.Handle.Id);
         }
 
@@ -36,7 +36,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.RemixAndResample = remix;
 
-            var res = FfiClient.SendRequest(request);
+            var res = FfiClient.Instance.SendRequest(request);
             var bufferInfo = res.RemixAndResample.Buffer;
             var handle = new FfiHandle((IntPtr)bufferInfo.Handle.Id);
             return new AudioFrame(handle, remix.Buffer);

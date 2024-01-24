@@ -86,7 +86,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.CreateAudioTrack = createTrack;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             var trackInfo = resp.CreateAudioTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalAudioTrack(trackHandle, trackInfo.Info, room);
@@ -107,7 +107,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.CreateVideoTrack = createTrack;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
             var trackInfo = resp.CreateVideoTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalVideoTrack(trackHandle, trackInfo.Info, room);

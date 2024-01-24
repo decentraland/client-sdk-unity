@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using LiveKit.Proto;
 using UnityEngine.Pool;
 
-namespace LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients
+namespace LiveKit.Internal.FFIClients//
 {
     public static class FfiRequestsPool
     {

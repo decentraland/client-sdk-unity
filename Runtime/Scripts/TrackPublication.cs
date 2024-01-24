@@ -57,7 +57,7 @@ namespace LiveKit
             var request = new FfiRequest();
             request.SetSubscribed = setSubscribed;
 
-            var resp = FfiClient.SendRequest(request);
+            var resp = FfiClient.Instance.SendRequest(request);
         }
     }
 
