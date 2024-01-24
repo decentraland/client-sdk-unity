@@ -7,9 +7,9 @@ namespace LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients
     public readonly struct FfiResponseWrap : IDisposable
     {
         private readonly FfiResponse response;
-        private readonly IPoolableFFIClient client;
+        private readonly IFFIClient client;
 
-        public FfiResponseWrap(FfiResponse response, IPoolableFFIClient client)
+        public FfiResponseWrap(FfiResponse response, IFFIClient client)
         {
             this.response = response;
             this.client = client;

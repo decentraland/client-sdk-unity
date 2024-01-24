@@ -17,7 +17,7 @@ namespace LiveKit.Internal
     #if UNITY_EDITOR
     [InitializeOnLoad]
     #endif
-    internal sealed class FfiClient : IPoolableFFIClient
+    internal sealed class FfiClient : IFFIClient
     {
         private static readonly Lazy<FfiClient> instance = new(() => new FfiClient());
         public static FfiClient Instance => instance.Value;
