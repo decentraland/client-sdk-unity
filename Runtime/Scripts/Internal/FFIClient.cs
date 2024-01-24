@@ -4,6 +4,7 @@ using UnityEngine;
 using Google.Protobuf;
 using System.Threading;
 using LiveKit.Internal.FFIClients;
+using UnityEngine.Pool;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -14,12 +15,13 @@ namespace LiveKit.Internal
     #if UNITY_EDITOR
     [InitializeOnLoad]
     #endif
-    internal sealed class FfiClient : IFFIClient
+    internal sealed class FfiClient : IPoolableFFIClient
     {
-        private static readonly Lazy<FfiClient> _instance = new(() => new FfiClient());
-        public static FfiClient Instance => _instance.Value;
+        private static readonly Lazy<FfiClient> instance = new(() => new FfiClient());
+        public static FfiClient Instance => instance.Value;
 
         internal SynchronizationContext _context;
+        private readonly IObjectPool<FfiRequest> ffiRequestPool;
 
         public event PublishTrackDelegate PublishTrackReceived;
         public event ConnectReceivedDelegate ConnectReceived;
@@ -29,6 +31,15 @@ namespace LiveKit.Internal
         // participant events are not allowed in the fii protocol public event ParticipantEventReceivedDelegate ParticipantEventReceived;
         public event VideoStreamEventReceivedDelegate VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate AudioStreamEventReceived;
+
+        public FfiClient() : this(FfiRequestsPool.NewPool())
+        {
+        }
+
+        public FfiClient(IObjectPool<FfiRequest> ffiRequestPool)
+        {
+            this.ffiRequestPool = ffiRequestPool;
+        }
 
         #if UNITY_EDITOR
         static FfiClient()
@@ -90,13 +101,21 @@ namespace LiveKit.Internal
         {
             // Stop all rooms synchronously
             // The rust lk implementation should also correctly dispose WebRTC
-            var disposeReq = new DisposeRequest();
-
-            //TODO: object pool
-            var request = new FfiRequest();
-            request.Dispose = disposeReq;
-            SendRequest(request);
+            SendRequest(
+                requestSetUp: request => request.Dispose = new DisposeRequest(),
+                requestCleanUp: request => request.Dispose = null
+            );
             Utils.Debug("FFIServer - Disposed");
+        }
+
+        public FfiResponse SendRequest(Action<FfiRequest> requestSetUp, Action<FfiRequest> requestCleanUp)
+        {
+            var request = ffiRequestPool.Get()!;
+            requestSetUp(request);
+            var response = SendRequest(request);
+            requestCleanUp(request);
+            ffiRequestPool.Release(request);
+            return response;
         }
 
         public FfiResponse SendRequest(FfiRequest request)
