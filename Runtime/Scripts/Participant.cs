@@ -85,10 +85,12 @@ namespace LiveKit
             publish.TrackHandle = (ulong)track.Handle.DangerousGetHandle();
             publish.Options = options;
 
-            var request = new FfiRequest();
-            request.PublishTrack = publish;
-            var resp = FfiClient.Instance.SendRequest(request);
-            return new PublishTrackInstruction(resp.PublishTrack.AsyncId, Room, token);
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.PublishTrack = publish,
+                r => r.PublishTrack = null
+            );
+            FfiResponse res = resp;
+            return new PublishTrackInstruction(res.PublishTrack.AsyncId, Room, token);
         }
     }
 

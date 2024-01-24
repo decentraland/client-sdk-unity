@@ -5,6 +5,7 @@ using LiveKit.Proto;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Threading;
+using LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients;
 
 namespace LiveKit
 {
@@ -26,7 +27,7 @@ namespace LiveKit
         private object _lock = new object();
 
 
-        private Thread _readAudioThread;
+        private Thread? _readAudioThread;
         private bool _pending = false;
 
         public AudioStream(IAudioTrack audioTrack, AudioSource source)
@@ -43,11 +44,12 @@ namespace LiveKit
             newAudioStream.TrackHandle = (ulong)room.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;
 
-            var request = new FfiRequest();
-            request.NewAudioStream = newAudioStream;
-
-            var resp = FfiClient.Instance.SendRequest(request);
-            var streamInfo = resp.NewAudioStream.Stream;
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.NewAudioStream = newAudioStream,
+                r => r.NewAudioStream = null
+            );
+            FfiResponse res = resp;
+            var streamInfo = res.NewAudioStream.Stream;
 
             _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
@@ -84,20 +86,20 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            _readAudioThread = new Thread(async () => await Update());
+            _readAudioThread = new Thread(Update);
             _readAudioThread.Start();
         }
 
         public void Stop()
         {
-            if (_readAudioThread != null) _readAudioThread.Abort();
+            _readAudioThread?.Abort();
         }
 
-        private async Task Update()
+        private void Update()
         {
             while (true)
             {
-                await Task.Delay(Constants.TASK_DELAY);
+                Thread.Sleep(Constants.TASK_DELAY);
 
                 if (_pending)
                 {

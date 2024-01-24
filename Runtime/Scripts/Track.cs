@@ -50,7 +50,12 @@ namespace LiveKit
 
         // IsOwned is true if C# owns the handle
         public bool IsOwned => Handle != null && !Handle.IsInvalid;
-        public FfiHandle Handle { get { return _handle; } }
+
+        public FfiHandle Handle
+        {
+            get { return _handle; }
+        }
+
         private FfiHandle _handle;
         private CancellationToken _token;
 
@@ -75,7 +80,10 @@ namespace LiveKit
 
     public sealed class LocalAudioTrack : Track, ILocalTrack, IAudioTrack
     {
-        internal LocalAudioTrack(FfiHandle handle, TrackInfo info, Room room) : base(handle, info, room, room?.LocalParticipant) { }
+        internal LocalAudioTrack(FfiHandle handle, TrackInfo info, Room room) : base(handle, info, room,
+            room?.LocalParticipant)
+        {
+        }
 
         public static LocalAudioTrack CreateAudioTrack(string name, RtcAudioSource source, Room room)
         {
@@ -83,11 +91,12 @@ namespace LiveKit
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
 
-            var request = new FfiRequest();
-            request.CreateAudioTrack = createTrack;
-
-            var resp = FfiClient.Instance.SendRequest(request);
-            var trackInfo = resp.CreateAudioTrack.Track;
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.CreateAudioTrack = createTrack,
+                r => r.CreateAudioTrack = null
+            );
+            FfiResponse res = resp;
+            var trackInfo = res.CreateAudioTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalAudioTrack(trackHandle, trackInfo.Info, room);
             return track;
@@ -96,7 +105,10 @@ namespace LiveKit
 
     public sealed class LocalVideoTrack : Track, ILocalTrack, IVideoTrack
     {
-        internal LocalVideoTrack(FfiHandle handle, TrackInfo info, Room room) : base(handle, info, room, room?.LocalParticipant) { }
+        internal LocalVideoTrack(FfiHandle handle, TrackInfo info, Room room) : base(handle, info, room,
+            room?.LocalParticipant)
+        {
+        }
 
         public static LocalVideoTrack CreateVideoTrack(string name, RtcVideoSource source, Room room)
         {
@@ -104,11 +116,12 @@ namespace LiveKit
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
 
-            var request = new FfiRequest();
-            request.CreateVideoTrack = createTrack;
-
-            var resp = FfiClient.Instance.SendRequest(request);
-            var trackInfo = resp.CreateVideoTrack.Track;
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.CreateVideoTrack = createTrack,
+                r => r.CreateVideoTrack = null
+            );
+            FfiResponse res = resp;
+            var trackInfo = res.CreateVideoTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalVideoTrack(trackHandle, trackInfo.Info, room);
             return track;
@@ -117,11 +130,17 @@ namespace LiveKit
 
     public sealed class RemoteAudioTrack : Track, IRemoteTrack, IAudioTrack
     {
-        internal RemoteAudioTrack(FfiHandle handle, TrackInfo info, Room room, RemoteParticipant participant) : base(handle, info, room, participant) { }
+        internal RemoteAudioTrack(FfiHandle handle, TrackInfo info, Room room, RemoteParticipant participant) : base(handle,
+            info, room, participant)
+        {
+        }
     }
 
     public sealed class RemoteVideoTrack : Track, IRemoteTrack, IVideoTrack
     {
-        internal RemoteVideoTrack(FfiHandle handle, TrackInfo info, Room room, RemoteParticipant participant) : base(handle, info, room, participant) { }
+        internal RemoteVideoTrack(FfiHandle handle, TrackInfo info, Room room, RemoteParticipant participant) : base(handle,
+            info, room, participant)
+        {
+        }
     }
 }

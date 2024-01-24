@@ -17,7 +17,7 @@ namespace LiveKit
         public uint SamplesPerChannel => _info.SamplesPerChannel;
 
         public IntPtr Data => (IntPtr)_info.DataPtr;
-        public int Length => (int) (SamplesPerChannel * NumChannels * sizeof(short));
+        public int Length => (int)(SamplesPerChannel * NumChannels * sizeof(short));
 
         internal AudioFrame(FfiHandle handle, AudioFrameBufferInfo info)
         {
@@ -25,26 +25,25 @@ namespace LiveKit
             _info = info;
         }
 
-        internal AudioFrame(int sampleRate, int numChannels, int samplesPerChannel) {
-            var alloc = new AllocAudioBufferRequest();
-            alloc.SampleRate = (uint) sampleRate;
-            alloc.NumChannels = (uint) numChannels;
-            alloc.SamplesPerChannel = (uint) samplesPerChannel;
-
-            var request = new FfiRequest();
-            request.AllocAudioBuffer = alloc;
-
-            Init(request);
-        }
-
-        private void Init(FfiRequest request)
+        internal AudioFrame(int sampleRate, int numChannels, int samplesPerChannel)
         {
-            var res = FfiClient.Instance.SendRequest(request);
-            var bufferInfo = res.AllocAudioBuffer.Buffer.Info;
+            //TODO inner requests pooling
+            var alloc = new AllocAudioBufferRequest();
+            alloc.SampleRate = (uint)sampleRate;
+            alloc.NumChannels = (uint)numChannels;
+            alloc.SamplesPerChannel = (uint)samplesPerChannel;
 
+            using var resWrap = FfiClient.Instance.SendRequest(
+                request => request.AllocAudioBuffer = alloc,
+                request => request.AllocAudioBuffer = null
+            );
+            FfiResponse res = resWrap;
+            
+            var bufferInfo = res.AllocAudioBuffer.Buffer.Info;
             _handle = new FfiHandle((IntPtr)res.AllocAudioBuffer.Buffer.Handle.Id);
             _info = bufferInfo;
-            
+
+            res.AllocAudioBuffer = null;
         }
 
         ~AudioFrame()

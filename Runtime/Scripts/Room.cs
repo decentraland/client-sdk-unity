@@ -63,13 +63,14 @@ namespace LiveKit
             connect.Token = authToken;
             connect.Options = new RoomOptions() { AutoSubscribe = false };
 
-            var request = new FfiRequest();
-            request.Connect = connect;
-
             Utils.Debug("Connect....");
-            var resp = FfiClient.Instance.SendRequest(request);
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.Connect = connect,
+                r => r.Connect = null
+            );
+            FfiResponse res = resp;
             Utils.Debug($"Connect response.... {resp}");
-            return new ConnectInstruction(resp.Connect.AsyncId, this, cancelToken);
+            return new ConnectInstruction(res.Connect.AsyncId, this, cancelToken);
         }
 
         public void PublishData(byte[] data, string topic,  DataPacketKind kind = DataPacketKind.KindLossy)
@@ -84,11 +85,11 @@ namespace LiveKit
             dataRequest.Topic = topic;
             dataRequest.LocalParticipantHandle = (ulong)LocalParticipant.Handle.DangerousGetHandle();
 
-            var request = new FfiRequest();
-            request.PublishData = dataRequest;
-
             Utils.Debug("Sending message: " + topic);
-            FfiClient.Instance.SendRequest(request);
+            using var res = FfiClient.Instance.SendRequest(
+                r => r.PublishData = dataRequest,
+                r => r.PublishData = null
+            );
             pinnedArray.Free();
         }
 
@@ -97,11 +98,11 @@ namespace LiveKit
             var disconnect = new DisconnectRequest();
             disconnect.RoomHandle = (ulong)Handle.DangerousGetHandle();
 
-            var request = new FfiRequest();
-            request.Disconnect = disconnect;
-
             Utils.Debug($"Disconnect.... {disconnect.RoomHandle}");
-            var resp = FfiClient.Instance.SendRequest(request);
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.Disconnect = disconnect,
+                r => r.Disconnect = null
+            );
             Utils.Debug($"Disconnect response.... {resp}");
         }
 

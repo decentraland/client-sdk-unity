@@ -59,16 +59,12 @@ namespace LiveKit
             //newVideoStream.TrackSid = videoTrack.Sid;
             newVideoStream.Type = VideoStreamType.VideoStreamNative;
 
-            var request = new FfiRequest();
-            request.NewVideoStream = newVideoStream;
-
-            Init(request);
-        }
-
-        private void Init(FfiRequest request)
-        {
-            var resp = FfiClient.Instance.SendRequest(request);
-            var streamInfo = resp.NewVideoStream.Stream;
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.NewVideoStream = newVideoStream,
+                r => r.NewVideoStream = null
+            );
+            FfiResponse res = resp;
+            var streamInfo = res.NewVideoStream.Stream;
 
             Handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
             FfiClient.Instance.VideoStreamEventReceived += OnVideoStreamEvent;

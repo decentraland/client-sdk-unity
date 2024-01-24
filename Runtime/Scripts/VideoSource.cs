@@ -28,13 +28,14 @@ namespace LiveKit
             var newVideoSource = new NewVideoSourceRequest();
             newVideoSource.Type = VideoSourceType.VideoSourceNative;
 
-            var request = new FfiRequest();
-            request.NewVideoSource = newVideoSource;
+            using var resp = FfiClient.Instance.SendRequest(
+                r => r.NewVideoSource = newVideoSource,
+                r => r.NewVideoSource = null
+            );
+            FfiResponse res = resp;
 
-            var resp = FfiClient.Instance.SendRequest(request);
-
-            _info = resp.NewVideoSource.Source.Info;
-            _handle = new FfiHandle((IntPtr)resp.NewVideoSource.Source.Handle.Id);
+            _info = res.NewVideoSource.Source.Info;
+            _handle = new FfiHandle((IntPtr)res.NewVideoSource.Source.Handle.Id);
         }
     }
 
@@ -131,11 +132,13 @@ namespace LiveKit
                 toI420.FlipY = true;
                 toI420.Argb = argbInfo;
 
-                var request = new FfiRequest();
-                request.ToI420 = toI420;
+                using var resp = FfiClient.Instance.SendRequest(
+                    r => r.ToI420 = toI420,
+                    r => r.ToI420 = null
+                );
+                FfiResponse res = resp;
 
-                var resp = FfiClient.Instance.SendRequest(request);
-                var bufferInfo = resp.ToI420.Buffer;
+                var bufferInfo = res.ToI420.Buffer;
                 var buffer = VideoFrameBuffer.Create(new FfiHandle((IntPtr)bufferInfo.Handle.Id), bufferInfo.Info);
 
                 // Send the frame to WebRTC
@@ -148,10 +151,10 @@ namespace LiveKit
                 capture.Handle = (ulong)buffer.Handle.DangerousGetHandle();
                 capture.Frame = frameInfo;
 
-                request = new FfiRequest();
-                request.CaptureVideoFrame = capture;
-
-                FfiClient.Instance.SendRequest(request);
+                using var response = FfiClient.Instance.SendRequest(
+                    r => r.CaptureVideoFrame = capture,
+                    r => r.CaptureVideoFrame = null
+                );
                 reading = false;
                 _requestPending = false;
             }

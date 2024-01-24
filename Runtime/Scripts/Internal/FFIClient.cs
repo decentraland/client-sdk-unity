@@ -3,6 +3,7 @@ using LiveKit.Proto;
 using UnityEngine;
 using Google.Protobuf;
 using System.Threading;
+using LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients;
 using LiveKit.Internal.FFIClients;
 using LiveKit.Internal.FFIClients.Pools;
 using UnityEngine.Pool;
@@ -126,14 +127,14 @@ namespace LiveKit.Internal
             Utils.Debug("FFIServer - Disposed");
         }
 
-        public FfiResponse SendRequest(Action<FfiRequest> requestSetUp, Action<FfiRequest> requestCleanUp)
+        public FfiResponseWrap SendRequest(Action<FfiRequest> requestSetUp, Action<FfiRequest> requestCleanUp)
         {
             var request = ffiRequestPool.Get()!;
             requestSetUp(request);
             var response = SendRequest(request);
             requestCleanUp(request);
             ffiRequestPool.Release(request);
-            return response;
+            return new FfiResponseWrap(response, this);
         }
 
         public void Release(FfiResponse response)
