@@ -11,9 +11,9 @@ using UnityEditor;
 
 namespace LiveKit.Internal
 {
-#if UNITY_EDITOR
+    #if UNITY_EDITOR
     [InitializeOnLoad]
-#endif
+    #endif
     internal sealed class FfiClient : IFFIClient
     {
         private static readonly Lazy<FfiClient> _instance = new(() => new FfiClient());
@@ -26,11 +26,11 @@ namespace LiveKit.Internal
         public event DisconnectReceivedDelegate DisconnectReceived;
         public event RoomEventReceivedDelegate RoomEventReceived;
         public event TrackEventReceivedDelegate TrackEventReceived;
-       // participant events are not allowed in the fii protocol public event ParticipantEventReceivedDelegate ParticipantEventReceived;
+        // participant events are not allowed in the fii protocol public event ParticipantEventReceivedDelegate ParticipantEventReceived;
         public event VideoStreamEventReceivedDelegate VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate AudioStreamEventReceived;
 
-#if UNITY_EDITOR
+        #if UNITY_EDITOR
         static FfiClient()
         {
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -48,21 +48,21 @@ namespace LiveKit.Internal
         {
             Initialize();
         }
-#else
+        #else
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Init()
         {
             Application.quitting += Quit;
             FfiClient.Initialize();
         }
-#endif
+        #endif
 
         private static void Quit()
         {
-#if UNITY_EDITOR
+            #if UNITY_EDITOR
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
-#endif
+            #endif
             Instance.Dispose();
         }
 
@@ -76,12 +76,13 @@ namespace LiveKit.Internal
 
         static void Initialize()
         {
-            FFICallbackDelegate callback = FFICallback;
-#if LK_VERBOSE
-            NativeMethods.LiveKitInitialize(callback, true);
-#else
-            NativeMethods.LiveKitInitialize(callback, false);
-#endif
+            #if LK_VERBOSE
+            const bool captureLogs = true;
+            #else
+            const bool captureLogs = false;
+            #endif
+
+            NativeMethods.LiveKitInitialize(FFICallback, captureLogs);
             Utils.Debug("FFIServer - Initialized");
         }
 
@@ -126,48 +127,49 @@ namespace LiveKit.Internal
             var respData = new Span<byte>(data.ToPointer(), size);
             var response = FfiEvent.Parser.ParseFrom(respData);
 
-            Utils.Debug("Callback... "+ response.ToString());
+            Utils.Debug("Callback... " + response.ToString());
             // Run on the main thread, the order of execution is guaranteed by Unity
             // It uses a Queue internally
-            if(Instance != null && Instance._context!=null) Instance._context.Post((resp) =>
-            {
-                var response = resp as FfiEvent;
-                if(response.MessageCase !=  FfiEvent.MessageOneofCase.Logs) Utils.Debug("Callback: " + response.MessageCase);
-                switch (response.MessageCase)
+            if (Instance != null && Instance._context != null)
+                Instance._context.Post((resp) =>
                 {
-                    case FfiEvent.MessageOneofCase.PublishData:
-                        break;
-                    case FfiEvent.MessageOneofCase.Connect:
-                        Instance.ConnectReceived?.Invoke(response.Connect);
-                        break;
-                    case FfiEvent.MessageOneofCase.PublishTrack:
-                        Instance.PublishTrackReceived?.Invoke(response.PublishTrack);
-                        break;
-                    case FfiEvent.MessageOneofCase.RoomEvent:
-                        Utils.Debug("Call back on room event: " + response.RoomEvent.MessageCase);
-                        Instance.RoomEventReceived?.Invoke(response.RoomEvent);
-                        break;
-                    case FfiEvent.MessageOneofCase.TrackEvent:
-                        Instance.TrackEventReceived?.Invoke(response.TrackEvent);
-                        break;
-                    case FfiEvent.MessageOneofCase.Disconnect:
-                        Instance.DisconnectReceived?.Invoke(response.Disconnect);
-                        break;
-                    /*case FfiEvent.MessageOneofCase. ParticipantEvent:
-                        Instance.ParticipantEventReceived?.Invoke(response.ParticipantEvent);
-                        break;*/
-                    case FfiEvent.MessageOneofCase.VideoStreamEvent:
-                        Instance.VideoStreamEventReceived?.Invoke(response.VideoStreamEvent);
-                        break;
-                    case FfiEvent.MessageOneofCase.AudioStreamEvent:
-                        Instance.AudioStreamEventReceived?.Invoke(response.AudioStreamEvent);
-                        break;
-                    case FfiEvent.MessageOneofCase.CaptureAudioFrame:
-                        Utils.Debug(response.CaptureAudioFrame);
-                        break;
-                }
-            }, response);
+                    var response = resp as FfiEvent;
+                    if (response.MessageCase != FfiEvent.MessageOneofCase.Logs)
+                        Utils.Debug("Callback: " + response.MessageCase);
+                    switch (response.MessageCase)
+                    {
+                        case FfiEvent.MessageOneofCase.PublishData:
+                            break;
+                        case FfiEvent.MessageOneofCase.Connect:
+                            Instance.ConnectReceived?.Invoke(response.Connect);
+                            break;
+                        case FfiEvent.MessageOneofCase.PublishTrack:
+                            Instance.PublishTrackReceived?.Invoke(response.PublishTrack);
+                            break;
+                        case FfiEvent.MessageOneofCase.RoomEvent:
+                            Utils.Debug("Call back on room event: " + response.RoomEvent.MessageCase);
+                            Instance.RoomEventReceived?.Invoke(response.RoomEvent);
+                            break;
+                        case FfiEvent.MessageOneofCase.TrackEvent:
+                            Instance.TrackEventReceived?.Invoke(response.TrackEvent);
+                            break;
+                        case FfiEvent.MessageOneofCase.Disconnect:
+                            Instance.DisconnectReceived?.Invoke(response.Disconnect);
+                            break;
+                        /*case FfiEvent.MessageOneofCase. ParticipantEvent:
+                            Instance.ParticipantEventReceived?.Invoke(response.ParticipantEvent);
+                            break;*/
+                        case FfiEvent.MessageOneofCase.VideoStreamEvent:
+                            Instance.VideoStreamEventReceived?.Invoke(response.VideoStreamEvent);
+                            break;
+                        case FfiEvent.MessageOneofCase.AudioStreamEvent:
+                            Instance.AudioStreamEventReceived?.Invoke(response.AudioStreamEvent);
+                            break;
+                        case FfiEvent.MessageOneofCase.CaptureAudioFrame:
+                            Utils.Debug(response.CaptureAudioFrame);
+                            break;
+                    }
+                }, response);
         }
     }
 }
-
