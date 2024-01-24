@@ -1,8 +1,9 @@
+using System;
 using LiveKit.Proto;
 
 namespace LiveKit.Internal.FFIClients
 {
-    public interface IFFIClient
+    public interface IFFIClient : IDisposable
     {
         FfiResponse SendRequest(FfiRequest request);
     }

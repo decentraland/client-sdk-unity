@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using LiveKit.Proto;
 using UnityEngine;
 using Google.Protobuf;
@@ -12,27 +11,12 @@ using UnityEditor;
 
 namespace LiveKit.Internal
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    delegate void FFICallbackDelegate(IntPtr data, int size);
-
-    // Callbacks
-    internal delegate void PublishTrackDelegate(PublishTrackCallback e);
-    internal delegate void ConnectReceivedDelegate(ConnectCallback e);
-    internal delegate void DisconnectReceivedDelegate(DisconnectCallback e);
-
-    // Events
-    internal delegate void RoomEventReceivedDelegate(RoomEvent e);
-    internal delegate void TrackEventReceivedDelegate(TrackEvent e);
-    internal delegate void ParticipantEventReceivedDelegate(OwnedParticipant e);
-    internal delegate void VideoStreamEventReceivedDelegate(VideoStreamEvent e);
-    internal delegate void AudioStreamEventReceivedDelegate(AudioStreamEvent e);
-
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
     internal sealed class FfiClient : IFFIClient
     {
-        private static readonly Lazy<FfiClient> _instance = new Lazy<FfiClient>(() => new FfiClient());
+        private static readonly Lazy<FfiClient> _instance = new(() => new FfiClient());
         public static FfiClient Instance => _instance.Value;
 
         internal SynchronizationContext _context;
@@ -57,7 +41,7 @@ namespace LiveKit.Internal
 
         static void OnBeforeAssemblyReload()
         {
-            Dispose();
+            Instance.Dispose();
         }
 
         static void OnAfterAssemblyReload()
@@ -79,7 +63,7 @@ namespace LiveKit.Internal
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
 #endif
-            Dispose();
+            Instance.Dispose();
         }
 
         [RuntimeInitializeOnLoadMethod]
@@ -101,7 +85,7 @@ namespace LiveKit.Internal
             Utils.Debug("FFIServer - Initialized");
         }
 
-        static void Dispose()
+        public void Dispose()
         {
             // Stop all rooms synchronously
             // The rust lk implementation should also correctly dispose WebRTC
@@ -110,7 +94,7 @@ namespace LiveKit.Internal
             //TODO: object pool
             var request = new FfiRequest();
             request.Dispose = disposeReq;
-            Instance.SendRequest(request);
+            SendRequest(request);
             Utils.Debug("FFIServer - Disposed");
         }
 
