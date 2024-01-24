@@ -1,7 +1,6 @@
 using System;
 using LiveKit.Proto;
 using LiveKit.Internal;
-using System.Threading.Tasks;
 using System.Threading;
 
 namespace LiveKit

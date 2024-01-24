@@ -12,20 +12,22 @@ namespace LiveKit
     public class VideoStream
     {
         public delegate void FrameReceiveDelegate(VideoFrame frame);
+
+
         public delegate void TextureReceiveDelegate(Texture2D tex2d);
+
+
         public delegate void TextureUploadDelegate();
 
-        private FfiHandle _handle;
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
+
+        internal FfiHandle Handle { get; private set; }
+
         private VideoStreamInfo _info;
-        private bool _disposed = false;
         private bool _dirty = false;
+        private volatile bool disposed = false;
 
         // Thread for parsing textures
-        private Thread _frameThread;
+        private Thread? frameThread;
 
         /// Called when we receive a new frame from the VideoTrack
         public event FrameReceiveDelegate FrameReceived;
@@ -39,8 +41,9 @@ namespace LiveKit
         /// The texture changes every time the video resolution changes.
         /// Can be null if UpdateRoutine isn't started
         public Texture2D Texture { private set; get; }
-        public VideoFrameBuffer VideoBuffer { private set; get; }
-        private object _lock = new object();
+        public VideoFrameBuffer? VideoBuffer { get; private set; }
+        
+        private readonly object _lock = new();
 
         public VideoStream(IVideoTrack videoTrack)
         {
@@ -67,9 +70,8 @@ namespace LiveKit
             var resp = FfiClient.SendRequest(request);
             var streamInfo = resp.NewVideoStream.Stream;
 
-            _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
+            Handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
             FfiClient.Instance.VideoStreamEventReceived += OnVideoStreamEvent;
-
         }
 
         ~VideoStream()
@@ -80,13 +82,13 @@ namespace LiveKit
         public void StartStreaming()
         {
             StopStreaming();
-            _frameThread = new Thread(async () => await GetFrame());
-            _frameThread.Start();
+            frameThread = new Thread(GetFrame);
+            frameThread.Start();
         }
 
         public void StopStreaming()
         {
-            if (_frameThread != null) _frameThread.Abort();
+            frameThread?.Abort();
         }
 
 
@@ -98,12 +100,12 @@ namespace LiveKit
 
         private void Dispose(bool disposing)
         {
-            if (!_disposed)
+            if (!disposed)
             {
                 if (disposing)
                     VideoBuffer?.Dispose();
 
-                _disposed = true;
+                disposed = true;
             }
         }
 
@@ -114,16 +116,18 @@ namespace LiveKit
             unsafe
             {
                 var texPtr = NativeArrayUnsafeUtility.GetUnsafePtr(data);
-                VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)texPtr, (uint)Texture.width * 4, (uint)Texture.width, (uint)Texture.height);
+                VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)texPtr, (uint)Texture.width * 4, (uint)Texture.width,
+                    (uint)Texture.height);
             }
+
             Texture.Apply();
         }
 
-        private async Task GetFrame()
+        private void GetFrame()
         {
-            while (!_disposed)
+            while (!disposed)
             {
-                await Task.Delay(Constants.TASK_DELAY);
+                Thread.Sleep(Constants.TASK_DELAY);
 
                 lock (_lock)
                 {
@@ -172,6 +176,7 @@ namespace LiveKit
                 VideoBuffer = buffer;
                 _dirty = true;
             }
+
             FrameReceived?.Invoke(frame);
         }
     }

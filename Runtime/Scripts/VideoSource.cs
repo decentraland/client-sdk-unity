@@ -15,10 +15,12 @@ namespace LiveKit
     public abstract class RtcVideoSource
     {
         private FfiHandle _handle;
+
         internal FfiHandle Handle
         {
             get { return _handle; }
         }
+
         protected VideoSourceInfo _info;
 
         public RtcVideoSource()
@@ -39,44 +41,45 @@ namespace LiveKit
     public class TextureVideoSource : RtcVideoSource
     {
         public Texture Texture { get; }
-        private NativeArray<byte> _data;
-        private bool _reading = false;
+        private NativeArray<byte> data;
+        private bool reading = false;
         private bool isDisposed = true;
-        private Thread _readVideoThread;
+        private Thread? readVideoThread;
 
         public TextureVideoSource(Texture texture)
         {
             Texture = texture;
-            _data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
+            data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
             isDisposed = false;
         }
 
         public void Start()
         {
-            _readVideoThread = new Thread(async ()=> await Update());
-            _readVideoThread.Start();
+            Stop();
+            readVideoThread = new Thread(Update);
+            readVideoThread.Start();
         }
 
         public void Stop()
         {
-            if (_readVideoThread != null) _readVideoThread.Abort();
+            readVideoThread?.Abort();
         }
 
         ~TextureVideoSource()
         {
             if (!isDisposed)
             {
-                _data.Dispose();
+                data.Dispose();
                 isDisposed = true;
             }
         }
-        
 
-        private async Task Update()
+
+        private void Update()
         {
             while (true)
             {
-                await Task.Delay(Constants.TASK_DELAY);
+                Thread.Sleep(Constants.TASK_DELAY);
                 ReadBuffer();
                 ReadBack();
             }
@@ -85,15 +88,16 @@ namespace LiveKit
         // Read the texture data into a native array asynchronously
         internal void ReadBuffer()
         {
-            if (_reading)
+            if (reading)
                 return;
 
-            _reading = true;
-            AsyncGPUReadback.RequestIntoNativeArray(ref _data, Texture, 0, TextureFormat.RGBA32, OnReadback);
+            reading = true;
+            AsyncGPUReadback.RequestIntoNativeArray(ref data, Texture, 0, TextureFormat.RGBA32, OnReadback);
         }
 
         private AsyncGPUReadbackRequest _readBackRequest;
         private bool _requestPending = false;
+
         private void OnReadback(AsyncGPUReadbackRequest req)
         {
             _readBackRequest = req;
@@ -102,7 +106,7 @@ namespace LiveKit
 
         private void ReadBack()
         {
-            if(_requestPending && !isDisposed)
+            if (_requestPending && !isDisposed)
             {
                 var req = _readBackRequest;
                 if (req.hasError)
@@ -115,8 +119,9 @@ namespace LiveKit
                 var argbInfo = new ArgbBufferInfo(); // TODO: MindTrust_VID
                 unsafe
                 {
-                    argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
+                    argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(data);
                 }
+
                 argbInfo.Format = VideoFormatType.FormatArgb;
                 argbInfo.Stride = (uint)Texture.width * 4;
                 argbInfo.Width = (uint)Texture.width;
@@ -147,7 +152,7 @@ namespace LiveKit
                 request.CaptureVideoFrame = capture;
 
                 FfiClient.SendRequest(request);
-                _reading = false;
+                reading = false;
                 _requestPending = false;
             }
         }

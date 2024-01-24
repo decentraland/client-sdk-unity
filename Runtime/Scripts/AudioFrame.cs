@@ -7,13 +7,10 @@ namespace LiveKit
     public class AudioFrame : IDisposable
     {
         private AudioFrameBufferInfo _info;
-
-        private FfiHandle _handle;
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
         private bool _disposed = false;
+        private FfiHandle _handle;
+
+        internal FfiHandle Handle => _handle;
 
         public uint NumChannels => _info.NumChannels;
         public uint SampleRate => _info.SampleRate;
@@ -40,7 +37,7 @@ namespace LiveKit
             Init(request);
         }
 
-        void Init(FfiRequest request)
+        private void Init(FfiRequest request)
         {
             var res = FfiClient.SendRequest(request);
             var bufferInfo = res.AllocAudioBuffer.Buffer.Info;

@@ -1,10 +1,7 @@
-using System;
 using System.Linq;
 using System.Collections.Generic;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using UnityEngine;
-using System.Threading.Tasks;
 using System.Threading;
 
 namespace LiveKit
@@ -13,17 +10,20 @@ namespace LiveKit
     {
         public delegate void PublishDelegate(RemoteTrackPublication publication);
 
+
         private ParticipantInfo _info;
         public string Sid => _info.Sid;
         public string Identity => _info.Identity;
         public string Name => _info.Name;
         public string Metadata => _info.Metadata;
+
         public void SetMeta(string meta)
         {
             _info.Metadata = meta;
         }
 
         private FfiHandle _handle;
+
         internal FfiHandle Handle
         {
             get { return _handle; }
@@ -36,25 +36,18 @@ namespace LiveKit
         public event PublishDelegate TrackPublished;
         public event PublishDelegate TrackUnpublished;
 
-        private Room _room;
-        public Room Room
-        {
-            get
-            {
-                return _room;
-            }
-        }
+        public Room Room { get; }
 
         public IReadOnlyDictionary<string, TrackPublication> Tracks => _tracks;
         internal readonly Dictionary<string, TrackPublication> _tracks = new();
 
         protected Participant(ParticipantInfo info, Room room, FfiHandle handle)
         {
-            _room =  room;
+            Room = room;
             _handle = handle;
             UpdateInfo(info);
         }
-      
+
         internal void UpdateInfo(ParticipantInfo info)
         {
             _info = info;
@@ -77,14 +70,19 @@ namespace LiveKit
         public new IReadOnlyDictionary<string, LocalTrackPublication> Tracks =>
             base.Tracks.ToDictionary(p => p.Key, p => (LocalTrackPublication)p.Value);
 
-        internal LocalParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle) { }
+        internal LocalParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle)
+        {
+        }
 
-        public PublishTrackInstruction PublishTrack(ILocalTrack localTrack, TrackPublishOptions options, CancellationToken token)
+        public PublishTrackInstruction PublishTrack(
+            ILocalTrack localTrack,
+            TrackPublishOptions options,
+            CancellationToken token)
         {
             var track = (Track)localTrack;
             var publish = new PublishTrackRequest();
             publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
-            publish.TrackHandle =   (ulong)track.Handle.DangerousGetHandle();
+            publish.TrackHandle = (ulong)track.Handle.DangerousGetHandle();
             publish.Options = options;
 
             var request = new FfiRequest();
@@ -99,7 +97,9 @@ namespace LiveKit
         public new IReadOnlyDictionary<string, RemoteTrackPublication> Tracks =>
             base.Tracks.ToDictionary(p => p.Key, p => (RemoteTrackPublication)p.Value);
 
-        internal RemoteParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle) { }
+        internal RemoteParticipant(ParticipantInfo info, Room room, FfiHandle handle) : base(info, room, handle)
+        {
+        }
     }
 
     public sealed class PublishTrackInstruction : AsyncInstruction

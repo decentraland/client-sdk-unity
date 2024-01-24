@@ -17,20 +17,19 @@ namespace LiveKit
         private AudioFilter _audioFilter;
 
         private FfiHandle _handle;
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
+
+        internal FfiHandle Handle => _handle;
+
         protected AudioSourceInfo _info;
 
         // Used on the AudioThread
         private AudioFrame _frame;
         private Thread _readAudioThread;
-        private bool _pending = false;
         private object _lock = new object();
         private float[] _data;
         private int _channels;
         private int _sampleRate;
+        private volatile bool _pending = false;
 
         public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
         {
@@ -51,21 +50,21 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            _readAudioThread = new Thread(async () => await Update());
+            _readAudioThread = new Thread(Update);
             _readAudioThread.Start();
         }
 
         public void Stop()
         {
-            if (_readAudioThread != null) _readAudioThread.Abort();
+            _readAudioThread?.Abort();
         }
 
-        async private Task Update()
+        private void Update()
         {
-            while(true)
+            while (true)
             {
-                await Task.Delay(Constants.TASK_DELAY);
-                if(_pending)
+                Thread.Sleep(Constants.TASK_DELAY);
+                if (_pending)
                 {
                     ReadAudio();
                 }
@@ -78,7 +77,8 @@ namespace LiveKit
             lock (_lock)
             {
                 var samplesPerChannel = _data.Length / _channels;
-                if (_frame == null || _frame.NumChannels != _channels
+                if (_frame == null
+                    || _frame.NumChannels != _channels
                     || _frame.SampleRate != _sampleRate
                     || _frame.SamplesPerChannel != samplesPerChannel)
                 {
@@ -105,19 +105,26 @@ namespace LiveKit
 
                         var pushFrame = new CaptureAudioFrameRequest();
                         pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
-                        pushFrame.Buffer = new AudioFrameBufferInfo() { DataPtr = (ulong)_frame.Data, NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate, SamplesPerChannel = _frame.SamplesPerChannel };
+                        pushFrame.Buffer = new AudioFrameBufferInfo()
+                        {
+                            DataPtr = (ulong)_frame.Data, NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate,
+                            SamplesPerChannel = _frame.SamplesPerChannel
+                        };
                         var request = new FfiRequest();
                         request.CaptureAudioFrame = pushFrame;
 
                         FfiClient.SendRequest(request);
                     }
-                    Utils.Debug($"Pushed audio frame with {_data.Length} sample rate " + _frame.SampleRate + "  num channels "+ _frame.NumChannels + " and samplers per channel "+ _frame.SamplesPerChannel);
 
-
+                    Utils.Debug($"Pushed audio frame with {_data.Length} sample rate "
+                                + _frame.SampleRate
+                                + "  num channels "
+                                + _frame.NumChannels
+                                + " and samplers per channel "
+                                + _frame.SamplesPerChannel);
                 }
                 catch (Exception e)
                 {
-
                     Utils.Error("Audio Framedata error: " + e.Message);
                 }
             }

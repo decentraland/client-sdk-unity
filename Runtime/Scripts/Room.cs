@@ -33,26 +33,26 @@ namespace LiveKit
         private readonly Dictionary<string, RemoteParticipant> _participants = new();
         public IReadOnlyDictionary<string, RemoteParticipant> Participants => _participants;
 
-        public event MetaDelegate RoomMetadataChanged;
-        public event ParticipantDelegate ParticipantConnected;
-        public event ParticipantDelegate ParticipantMetadataChanged;
-        public event ParticipantDelegate ParticipantDisconnected;
-        public event LocalPublishDelegate LocalTrackPublished;
-        public event LocalPublishDelegate LocalTrackUnpublished;
-        public event PublishDelegate TrackPublished;
-        public event PublishDelegate TrackUnpublished;
-        public event SubscribeDelegate TrackSubscribed;
-        public event SubscribeDelegate TrackUnsubscribed;
-        public event MuteDelegate TrackMuted;
-        public event MuteDelegate TrackUnmuted;
-        public event SpeakersChangeDelegate ActiveSpeakersChanged;
-        public event ConnectionQualityChangeDelegate ConnectionQualityChanged;
-        public event DataDelegate DataReceived;
-        public event ConnectionStateChangeDelegate ConnectionStateChanged;
-        public event ConnectionDelegate Connected;
-        public event ConnectionDelegate Disconnected;
-        public event ConnectionDelegate Reconnecting;
-        public event ConnectionDelegate Reconnected;
+        public event MetaDelegate? RoomMetadataChanged;
+        public event ParticipantDelegate? ParticipantConnected;
+        public event ParticipantDelegate? ParticipantMetadataChanged;
+        public event ParticipantDelegate? ParticipantDisconnected;
+        public event LocalPublishDelegate? LocalTrackPublished;
+        public event LocalPublishDelegate? LocalTrackUnpublished;
+        public event PublishDelegate? TrackPublished;
+        public event PublishDelegate? TrackUnpublished;
+        public event SubscribeDelegate? TrackSubscribed;
+        public event SubscribeDelegate? TrackUnsubscribed;
+        public event MuteDelegate? TrackMuted;
+        public event MuteDelegate? TrackUnmuted;
+        public event SpeakersChangeDelegate? ActiveSpeakersChanged;
+        public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
+        public event DataDelegate? DataReceived;
+        public event ConnectionStateChangeDelegate? ConnectionStateChanged;
+        public event ConnectionDelegate? Connected;
+        public event ConnectionDelegate? Disconnected;
+        public event ConnectionDelegate? Reconnecting;
+        public event ConnectionDelegate? Reconnected;
 
         internal FfiHandle Handle;
 

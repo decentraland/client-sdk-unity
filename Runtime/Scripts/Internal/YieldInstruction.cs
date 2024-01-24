@@ -13,7 +13,7 @@ namespace LiveKit
         public bool keepWaiting => !IsDone;
 
         private CancellationToken _token;
-        protected CancellationToken Token { get { return _token; } }
+        protected CancellationToken Token => _token;
 
 
         internal AsyncInstruction(CancellationToken token)
