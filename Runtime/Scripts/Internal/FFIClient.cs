@@ -120,23 +120,32 @@ namespace LiveKit.Internal
 
         public FfiResponse SendRequest(FfiRequest request)
         {
-            var data = request.ToByteArray(); // TODO(theomonnom): Avoid more allocations
-            unsafe
+            try
             {
-                try
+                unsafe
                 {
-                    var handle = NativeMethods.FfiNewRequest(data, data.Length, out byte* dataPtr, out int dataLen);
-                    var response = FfiResponse.Parser.ParseFrom(new Span<byte>(dataPtr, dataLen));
-                    handle.Dispose();
-                    return response;
+                    var data = request.ToByteArray()!; //TODO use spans
+                    fixed (byte* requestDataPtr = data)
+                    {
+                        var handle = NativeMethods.FfiNewRequest(
+                            requestDataPtr,
+                            data.Length,
+                            out byte* dataPtr,
+                            out int dataLen
+                        );
+
+                        var response = FfiResponse.Parser.ParseFrom(new Span<byte>(dataPtr, dataLen));
+                        handle.Dispose();
+                        return response;
+                    }
                 }
-                catch (Exception e)
-                {
-                    // Since we are in a thread I want to make sure we catch and log
-                    Utils.Error(e);
-                    // But we aren't actually handling this exception so we should re-throw here 
-                    throw e;
-                }
+            }
+            catch (Exception e)
+            {
+                // Since we are in a thread I want to make sure we catch and log
+                Utils.Error(e);
+                // But we aren't actually handling this exception so we should re-throw here 
+                throw new Exception("Cannot send request", e);
             }
         }
 
