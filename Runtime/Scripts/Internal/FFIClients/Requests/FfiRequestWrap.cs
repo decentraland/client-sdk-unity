@@ -55,7 +55,7 @@ namespace LiveKit.Internal.FFIClients.Requests
 
         public void Dispose()
         {
-            ffiRequest.Clear(request);
+            ffiRequest.ClearMessage();
             releaseRequest(request);
             releaseFfiRequest(ffiRequest);
         }
