@@ -1,13 +1,9 @@
 using System;
-using System.Collections;
 using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
-using UnityEngine.Rendering;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using System.Threading.Tasks;
 using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -33,17 +29,17 @@ namespace LiveKit
 
         public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
         {
-            var newAudioSource = new NewAudioSourceRequest();
+            using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
+            var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
             newAudioSource.NumChannels = 2;
             newAudioSource.SampleRate = 48000;
 
-            var request = new FfiRequest();
-            request.NewAudioSource = newAudioSource;
-
-            var resp = FfiClient.SendRequest(request);
-            _info = resp.NewAudioSource.Source.Info;
-            _handle = new FfiHandle((IntPtr)resp.NewAudioSource.Source.Handle.Id);
+            using var response = request.Send();
+            FfiResponse res = response;
+            _info = res.NewAudioSource.Source.Info;
+            //TODO pooling handles
+            _handle = new FfiHandle((IntPtr)res.NewAudioSource.Source.Handle.Id);
             UpdateSource(source, audioFilter);
         }
 
@@ -103,9 +99,10 @@ namespace LiveKit
                             frameData[i] = FloatToS16(_data[i]);
                         }
 
-                        var pushFrame = new CaptureAudioFrameRequest();
+                        using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
+                        var pushFrame = request.request;
                         pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
-                        pushFrame.Buffer = new AudioFrameBufferInfo()
+                        pushFrame.Buffer = new AudioFrameBufferInfo
                         {
                             DataPtr = (ulong)_frame.Data,
                             NumChannels = _frame.NumChannels,
@@ -113,9 +110,7 @@ namespace LiveKit
                             SamplesPerChannel = _frame.SamplesPerChannel
                         };
                         Debug.Log($"Num Channels {_frame.NumChannels} Sample {_frame.SampleRate} and {_frame.SamplesPerChannel}");
-                        var request = new FfiRequest();
-                        request.CaptureAudioFrame = pushFrame;
-                        FfiClient.SendRequest(request);
+                        using var response = request.Send();
                     }
                 }
                 catch (Exception e)

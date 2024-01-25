@@ -1,7 +1,6 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using LiveKit.Internal;
+using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using UnityEngine;
 
@@ -9,39 +8,33 @@ namespace LiveKit
 {
     public class AudioResampler
     {
-        private FfiHandle _handle;
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
+        internal FfiHandle Handle { get; }
 
         public AudioResampler()
         {
-            var newResampler = new NewAudioResamplerRequest();
-            var request = new FfiRequest();
-            request.NewAudioResampler = newResampler;
-            var res = FfiClient.SendRequest(request);
-            _handle = new FfiHandle((IntPtr)res.NewAudioResampler.Resampler.Handle.Id);
+            using var request = FFIBridge.Instance.NewRequest<NewAudioResamplerRequest>();
+            using var response = request.Send();
+            FfiResponse res = response;
+            Handle = new FfiHandle((IntPtr)res.NewAudioResampler.Resampler.Handle.Id);
         }
 
-        public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate) {
-            Debug.Log("R AND R");
-            Debug.Log("Remix And Resample: " + numChannels + " and sample " + sampleRate + " vs frame :" + frame.NumChannels + " and frame sample : " + sampleRate +" per chan "+ frame.SamplesPerChannel);
-            var remix = new RemixAndResampleRequest();
-            remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
-            remix.Buffer = new AudioFrameBufferInfo() { 
-                DataPtr = (ulong)frame.Data, 
-                NumChannels = frame.NumChannels, 
-                SampleRate = frame.SampleRate, 
-                SamplesPerChannel = frame.SamplesPerChannel 
-            };
+        public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate)
+        {
+            using var request = FFIBridge.Instance.NewRequest<RemixAndResampleRequest>();
+            var remix = request.request;
+            remix.ResamplerHandle = (ulong)Handle.DangerousGetHandle();
+            //TODO pooling inner buffers
+            remix.Buffer = new AudioFrameBufferInfo() {
+                            DataPtr = (ulong)frame.Data,
+                            NumChannels = frame.NumChannels,
+                            SampleRate = frame.SampleRate,
+                            SamplesPerChannel = frame.SamplesPerChannel
+                        };
+
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;
-
-            var request = new FfiRequest();
-            request.RemixAndResample = remix;
-
-            var res = FfiClient.SendRequest(request);
+            using var response = request.Send();
+            FfiResponse res = response;
             var bufferInfo = res.RemixAndResample.Buffer;
             var handle = new FfiHandle((IntPtr)bufferInfo.Handle.Id);
             return new AudioFrame(handle, remix.Buffer);

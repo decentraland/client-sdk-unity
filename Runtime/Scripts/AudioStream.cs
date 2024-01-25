@@ -2,9 +2,9 @@ using System;
 using UnityEngine;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
+using System.Runtime.InteropServices;
 
 namespace LiveKit
 {
@@ -26,7 +26,7 @@ namespace LiveKit
         private object _lock = new object();
 
 
-        private Thread _readAudioThread;
+        private Thread? _readAudioThread;
         private bool _pending = false;
 
         private float[] _data;
@@ -40,15 +40,14 @@ namespace LiveKit
 
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
-
-            var newAudioStream = new NewAudioStreamRequest();
+ 
+            using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
+            var newAudioStream = request.request;
             newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;
-
-            var request = new FfiRequest();
-            request.NewAudioStream = newAudioStream;
-            var resp = FfiClient.SendRequest(request);
-            var streamInfo = resp.NewAudioStream.Stream;
+            using var response = request.Send();
+            FfiResponse res = response;
+            var streamInfo = res.NewAudioStream.Stream;
 
             _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
@@ -81,16 +80,16 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            _readAudioThread = new Thread(() => Update());
+            _readAudioThread = new Thread(Update);
             _readAudioThread.Start();
         }
 
         public void Stop()
         {
-            if (_readAudioThread != null) _readAudioThread.Abort();
+            _readAudioThread?.Abort();
         }
 
-        private Task Update()
+        private void Update()
         {
             while (true)
             {
