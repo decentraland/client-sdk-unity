@@ -322,11 +322,11 @@ namespace LiveKit
             FfiClient.Instance.RoomEventReceived -= OnEventReceived;
         }
 
-        //private void OnLocalTrackPublished(OwnedTrackPublication p)
-        //{
-        //    var publication = new LocalTrackPublication(p.Info);
-        //    LocalParticipant._tracks.Add(publication.Sid, publication);
-        //}
+        internal void OnLocalTrackPublished(OwnedTrackPublication p)
+        {
+            var publication = new LocalTrackPublication(p.Info);
+            LocalParticipant._tracks.Add(publication.Sid, publication);
+        }
 
         RemoteParticipant CreateRemoteParticipant(ParticipantInfo info, RepeatedField<OwnedTrackPublication> publications, FfiHandle handle)
         {

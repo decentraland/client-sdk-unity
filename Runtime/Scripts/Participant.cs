@@ -122,7 +122,8 @@ namespace LiveKit
 
             IsError = !string.IsNullOrEmpty(e.Error);
             IsDone = true;
-
+            if (!IsError)
+                _room.OnLocalTrackPublished(e.Publication);
             FfiClient.Instance.PublishTrackReceived -= OnPublish;
         }
     }
