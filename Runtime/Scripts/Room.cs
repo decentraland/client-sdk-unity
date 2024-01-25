@@ -61,7 +61,7 @@ namespace LiveKit
             var connect = new ConnectRequest();
             connect.Url = url;
             connect.Token = authToken;
-            connect.Options = new RoomOptions() { AutoSubscribe = false };
+            connect.Options = new RoomOptions() { AutoSubscribe = true };
 
             var request = new FfiRequest();
             request.Connect = connect;
@@ -183,7 +183,7 @@ namespace LiveKit
                         participant._tracks.Add(publication.Sid, publication);
                         participant.OnTrackPublished(publication);
                         TrackPublished?.Invoke(publication, participant);
-                        publication.SetSubscribed(true);
+                        //publication.SetSubscribed(true);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.TrackUnpublished:
