@@ -97,8 +97,7 @@ namespace LiveKit
                 Thread.Sleep(Constants.TASK_DELAY);
 
                 if (_pending)
-                {
-                    Debug.Log("Update Pending");
+                { 
                     lock (_lock)
                     {
                         _pending = false;
@@ -126,8 +125,7 @@ namespace LiveKit
                         {
                             _data[i] = S16ToFloat(_tempBuffer[i]);
                         }
-                    }
-                    Debug.Log("Update Done");
+                    } 
                 }
             }
         }
@@ -136,7 +134,6 @@ namespace LiveKit
         // Called on the MainThread (See FfiClient)
         private void OnAudioStreamEvent(AudioStreamEvent e)
         {
-            Debug.Log("Stream Event Start");
             if (e.StreamHandle != (ulong)Handle.DangerousGetHandle())
                 return;
 
@@ -144,6 +141,8 @@ namespace LiveKit
                 return;
 
             var info = e.FrameReceived.Frame.Info;
+
+            //Debug.Log("Stream Event Start "+e.FrameReceived.Frame.Info.ToString() +" : "+e.FrameReceived.Frame.Info.SamplesPerChannel);
             var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
             var frame = new AudioFrame(handle, info);
 
@@ -160,8 +159,7 @@ namespace LiveKit
                     _buffer?.Write(data);
                 }
             }
-
-            Debug.Log("Stream Event End");
+             
         }
     }
 }
