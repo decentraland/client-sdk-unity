@@ -1,6 +1,7 @@
 using System;
 using LiveKit.Proto;
 using LiveKit.Internal;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -27,18 +28,13 @@ namespace LiveKit
 
         internal AudioFrame(int sampleRate, int numChannels, int samplesPerChannel)
         {
-            //TODO inner requests pooling
-            var alloc = new AllocAudioBufferRequest();
+            using var request = FFIBridge.Instance.NewRequest<AllocAudioBufferRequest>();
+            var alloc = request.request;
             alloc.SampleRate = (uint)sampleRate;
             alloc.NumChannels = (uint)numChannels;
             alloc.SamplesPerChannel = (uint)samplesPerChannel;
-
-            using var resWrap = FfiClient.Instance.SendRequest(
-                request => request.AllocAudioBuffer = alloc,
-                request => request.AllocAudioBuffer = null
-            );
-            FfiResponse res = resWrap;
-            
+            using var response = request.Send();
+            FfiResponse res = response;
             var bufferInfo = res.AllocAudioBuffer.Buffer.Info;
             _handle = new FfiHandle((IntPtr)res.AllocAudioBuffer.Buffer.Handle.Id);
             _info = bufferInfo;

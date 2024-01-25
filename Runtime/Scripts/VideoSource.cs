@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
@@ -7,35 +6,25 @@ using UnityEngine.Rendering;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
     public abstract class RtcVideoSource
     {
-        private FfiHandle _handle;
-
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
+        internal FfiHandle Handle { get; }
 
         protected VideoSourceInfo _info;
 
         public RtcVideoSource()
         {
-            var newVideoSource = new NewVideoSourceRequest();
+            using var request = FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
+            var newVideoSource = request.request;
             newVideoSource.Type = VideoSourceType.VideoSourceNative;
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.NewVideoSource = newVideoSource,
-                r => r.NewVideoSource = null
-            );
-            FfiResponse res = resp;
-
+            using var response = request.Send();
+            FfiResponse res = response;
             _info = res.NewVideoSource.Source.Info;
-            _handle = new FfiHandle((IntPtr)res.NewVideoSource.Source.Handle.Id);
+            Handle = new FfiHandle((IntPtr)res.NewVideoSource.Source.Handle.Id);
         }
     }
 
@@ -128,15 +117,12 @@ namespace LiveKit
                 argbInfo.Width = (uint)Texture.width;
                 argbInfo.Height = (uint)Texture.height;
 
-                var toI420 = new ToI420Request();
+                using var requestToI420 = FFIBridge.Instance.NewRequest<ToI420Request>();
+                var toI420 = requestToI420.request;
                 toI420.FlipY = true;
                 toI420.Argb = argbInfo;
-
-                using var resp = FfiClient.Instance.SendRequest(
-                    r => r.ToI420 = toI420,
-                    r => r.ToI420 = null
-                );
-                FfiResponse res = resp;
+                using var responseToI420 = requestToI420.Send();
+                FfiResponse res = responseToI420;
 
                 var bufferInfo = res.ToI420.Buffer;
                 var buffer = VideoFrameBuffer.Create(new FfiHandle((IntPtr)bufferInfo.Handle.Id), bufferInfo.Info);
@@ -146,15 +132,12 @@ namespace LiveKit
                 frameInfo.Rotation = VideoRotation._0;
                 frameInfo.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
-                var capture = new CaptureVideoFrameRequest();
+                using var request = FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
+                var capture = request.request;
                 capture.SourceHandle = (ulong)Handle.DangerousGetHandle();
                 capture.Handle = (ulong)buffer.Handle.DangerousGetHandle();
                 capture.Frame = frameInfo;
-
-                using var response = FfiClient.Instance.SendRequest(
-                    r => r.CaptureVideoFrame = capture,
-                    r => r.CaptureVideoFrame = null
-                );
+                using var response = request.Send();
                 reading = false;
                 _requestPending = false;
             }

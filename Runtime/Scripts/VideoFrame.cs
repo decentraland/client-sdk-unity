@@ -1,10 +1,8 @@
 using System;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using UnityEngine;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
-using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -114,15 +112,13 @@ namespace LiveKit
             //var handleId = new VideoFrameBufferInfo();
             //handleId.Id = (ulong)Handle.DangerousGetHandle();
 
-            var toi420 = new ToI420Request();
+            using var request = FFIBridge.Instance.NewRequest<ToI420Request>();
+            var toi420 = request.request;
             //toi420.Buffer = handleId;
             toi420.Handle = (ulong)Handle.DangerousGetHandle();
 
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.ToI420 = toi420,
-                r => r.ToI420 = null
-            );
-            FfiResponse res = resp;
+            using var response = request.Send();
+            FfiResponse res = response;
             
             var newInfo = res.ToI420.Buffer;
             if (newInfo == null)
@@ -138,18 +134,15 @@ namespace LiveKit
             if (!IsValid)
                 throw new InvalidOperationException("the handle is invalid");
 
-            var argb = new ToArgbRequest();
+            using var request = FFIBridge.Instance.NewRequest<ToArgbRequest>();
+            var argb = request.request;
             //argb.Buffer = handleId;
             argb.DstPtr = (ulong)dst;
             argb.DstFormat = format;
             argb.DstStride = dstStride;
             argb.DstWidth = width;
             argb.DstHeight = height;
-
-            using var res = FfiClient.Instance.SendRequest(
-                r => r.ToArgb = argb,
-                r => r.ToArgb = null
-            );
+            using var response = request.Send();
         }
     }
 

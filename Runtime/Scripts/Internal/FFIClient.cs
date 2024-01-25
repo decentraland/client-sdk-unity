@@ -3,7 +3,6 @@ using LiveKit.Proto;
 using UnityEngine;
 using Google.Protobuf;
 using System.Threading;
-using LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients;
 using LiveKit.Internal.FFIClients;
 using LiveKit.Internal.FFIClients.Pools;
 using UnityEngine.Pool;
@@ -24,7 +23,6 @@ namespace LiveKit.Internal
 
         internal SynchronizationContext? _context;
 
-        private readonly IObjectPool<FfiRequest> ffiRequestPool;
         private readonly IObjectPool<FfiResponse> ffiResponsePool;
         private readonly MessageParser<FfiResponse> responseParser;
 
@@ -42,7 +40,6 @@ namespace LiveKit.Internal
         }
 
         public FfiClient(IObjectPool<FfiResponse> ffiResponsePool) : this(
-            Pools.NewFfiRequestPool(),
             ffiResponsePool,
             new MessageParser<FfiResponse>(ffiResponsePool.Get)
         )
@@ -50,12 +47,10 @@ namespace LiveKit.Internal
         }
 
         public FfiClient(
-            IObjectPool<FfiRequest> ffiRequestPool,
             IObjectPool<FfiResponse> ffiResponsePool,
             MessageParser<FfiResponse> responseParser
         )
         {
-            this.ffiRequestPool = ffiRequestPool;
             this.responseParser = responseParser;
             this.ffiResponsePool = ffiResponsePool;
         }
@@ -121,20 +116,12 @@ namespace LiveKit.Internal
             // Stop all rooms synchronously
             // The rust lk implementation should also correctly dispose WebRTC
             SendRequest(
-                requestSetUp: request => request.Dispose = new DisposeRequest(),
-                requestCleanUp: request => request.Dispose = null
+                new FfiRequest
+                {
+                    Dispose = new DisposeRequest()
+                }
             );
             Utils.Debug("FFIServer - Disposed");
-        }
-
-        public FfiResponseWrap SendRequest(Action<FfiRequest> requestSetUp, Action<FfiRequest> requestCleanUp)
-        {
-            var request = ffiRequestPool.Get()!;
-            requestSetUp(request);
-            var response = SendRequest(request);
-            requestCleanUp(request);
-            ffiRequestPool.Release(request);
-            return new FfiResponseWrap(response, this);
         }
 
         public void Release(FfiResponse response)

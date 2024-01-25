@@ -1,11 +1,10 @@
 using System;
-using System.Collections;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using UnityEngine;
 using Unity.Collections.LowLevel.Unsafe;
-using System.Threading.Tasks;
 using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -53,17 +52,14 @@ namespace LiveKit
             if (!videoTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("videotrack's participant is invalid");
 
-            var newVideoStream = new NewVideoStreamRequest();
+            using var request = FFIBridge.Instance.NewRequest<NewVideoStreamRequest>();
+            var newVideoStream = request.request;
             newVideoStream.TrackHandle = (ulong)room.Handle.DangerousGetHandle();
             //newVideoStream.ParticipantSid = participant.Sid;
             //newVideoStream.TrackSid = videoTrack.Sid;
             newVideoStream.Type = VideoStreamType.VideoStreamNative;
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.NewVideoStream = newVideoStream,
-                r => r.NewVideoStream = null
-            );
-            FfiResponse res = resp;
+            using var response = request.Send();
+            FfiResponse res = response;
             var streamInfo = res.NewVideoStream.Stream;
 
             Handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);

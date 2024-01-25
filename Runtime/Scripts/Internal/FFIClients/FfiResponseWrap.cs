@@ -1,8 +1,7 @@
 using System;
-using LiveKit.Internal.FFIClients;
 using LiveKit.Proto;
 
-namespace LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients
+namespace LiveKit.Internal.FFIClients
 {
     public readonly struct FfiResponseWrap : IDisposable
     {

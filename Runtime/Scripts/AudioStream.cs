@@ -2,10 +2,8 @@ using System;
 using UnityEngine;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using System.Threading;
-using LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -40,15 +38,12 @@ namespace LiveKit
 
             _resampler = new AudioResampler();
 
-            var newAudioStream = new NewAudioStreamRequest();
+            using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
+            var newAudioStream = request.request;
             newAudioStream.TrackHandle = (ulong)room.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.NewAudioStream = newAudioStream,
-                r => r.NewAudioStream = null
-            );
-            FfiResponse res = resp;
+            using var response = request.Send();
+            FfiResponse res = response;
             var streamInfo = res.NewAudioStream.Stream;
 
             _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);

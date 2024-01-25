@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using System.Runtime.InteropServices;
-using UnityEngine;
 using Google.Protobuf.Collections;
-using System.Threading.Tasks;
 using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -58,18 +57,15 @@ namespace LiveKit
 
         public ConnectInstruction Connect(string url, string authToken, CancellationToken cancelToken)
         {
-            var connect = new ConnectRequest();
+            using var request = FFIBridge.Instance.NewRequest<ConnectRequest>();
+            var connect = request.request;
             connect.Url = url;
             connect.Token = authToken;
-            connect.Options = new RoomOptions() { AutoSubscribe = false };
-
+            connect.Options = new RoomOptions { AutoSubscribe = false };
             Utils.Debug("Connect....");
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.Connect = connect,
-                r => r.Connect = null
-            );
-            FfiResponse res = resp;
-            Utils.Debug($"Connect response.... {resp}");
+            using var response = request.Send();
+            FfiResponse res = response;
+            Utils.Debug($"Connect response.... {response}");
             return new ConnectInstruction(res.Connect.AsyncId, this, cancelToken);
         }
 
@@ -78,31 +74,27 @@ namespace LiveKit
             GCHandle pinnedArray = GCHandle.Alloc(data, GCHandleType.Pinned);
             IntPtr pointer = pinnedArray.AddrOfPinnedObject();
 
-            var dataRequest = new PublishDataRequest();
+            using var request = FFIBridge.Instance.NewRequest<PublishDataRequest>();
+            var dataRequest = request.request;
             dataRequest.DataLen = (ulong)data.Length;
             dataRequest.DataPtr = (ulong)pointer;
             dataRequest.Kind = kind;
             dataRequest.Topic = topic;
             dataRequest.LocalParticipantHandle = (ulong)LocalParticipant.Handle.DangerousGetHandle();
-
             Utils.Debug("Sending message: " + topic);
-            using var res = FfiClient.Instance.SendRequest(
-                r => r.PublishData = dataRequest,
-                r => r.PublishData = null
-            );
+            using var response = request.Send();
             pinnedArray.Free();
         }
 
         public void Disconnect()
         {
-            var disconnect = new DisconnectRequest();
+            using var request = FFIBridge.Instance.NewRequest<DisconnectRequest>();
+            var disconnect = request.request;
             disconnect.RoomHandle = (ulong)Handle.DangerousGetHandle();
 
             Utils.Debug($"Disconnect.... {disconnect.RoomHandle}");
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.Disconnect = disconnect,
-                r => r.Disconnect = null
-            );
+            using var response = request.Send();
+            FfiResponse resp = response;
             Utils.Debug($"Disconnect response.... {resp}");
         }
 

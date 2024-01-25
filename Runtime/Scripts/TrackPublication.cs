@@ -1,4 +1,4 @@
-using LiveKit.Internal;
+using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 
 namespace LiveKit
@@ -50,14 +50,11 @@ namespace LiveKit
 
         public void SetSubscribed(bool subscribed)
         {
-            var setSubscribed = new SetSubscribedRequest();
+            using var request = FFIBridge.Instance.NewRequest<SetSubscribedRequest>();
+            var setSubscribed = request.request;
             setSubscribed.Subscribe = subscribed;
             setSubscribed.PublicationHandle = (ulong)Track.Handle.DangerousGetHandle();
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.SetSubscribed = setSubscribed,
-                r => r.SetSubscribed = null
-            );
+            using var response = request.Send();
         }
     }
 

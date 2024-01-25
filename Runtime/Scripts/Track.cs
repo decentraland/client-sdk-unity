@@ -2,6 +2,7 @@ using System;
 using LiveKit.Proto;
 using LiveKit.Internal;
 using System.Threading;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
@@ -87,15 +88,12 @@ namespace LiveKit
 
         public static LocalAudioTrack CreateAudioTrack(string name, RtcAudioSource source, Room room)
         {
-            var createTrack = new CreateAudioTrackRequest();
+            using var request = FFIBridge.Instance.NewRequest<CreateAudioTrackRequest>();
+            var createTrack = request.request;
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.CreateAudioTrack = createTrack,
-                r => r.CreateAudioTrack = null
-            );
-            FfiResponse res = resp;
+            using var response = request.Send();
+            FfiResponse res = response;
             var trackInfo = res.CreateAudioTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalAudioTrack(trackHandle, trackInfo.Info, room);
@@ -112,15 +110,12 @@ namespace LiveKit
 
         public static LocalVideoTrack CreateVideoTrack(string name, RtcVideoSource source, Room room)
         {
-            var createTrack = new CreateVideoTrackRequest();
+            using var request = FFIBridge.Instance.NewRequest<CreateVideoTrackRequest>();
+            var createTrack = request.request;
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
-
-            using var resp = FfiClient.Instance.SendRequest(
-                r => r.CreateVideoTrack = createTrack,
-                r => r.CreateVideoTrack = null
-            );
-            FfiResponse res = resp;
+            using var response = request.Send();
+            FfiResponse res = response;
             var trackInfo = res.CreateVideoTrack.Track;
             var trackHandle = new FfiHandle((IntPtr)trackInfo.Handle.Id);
             var track = new LocalVideoTrack(trackHandle, trackInfo.Info, room);
