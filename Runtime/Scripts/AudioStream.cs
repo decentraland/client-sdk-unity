@@ -29,6 +29,10 @@ namespace LiveKit
         private Thread _readAudioThread;
         private bool _pending = false;
 
+        private float[] _data;
+        private int _channels;
+        private int _pendingSampleRate;
+
         public AudioStream(IAudioTrack audioTrack, AudioSource source)
         {
             if (!audioTrack.Room.TryGetTarget(out var room))
@@ -62,11 +66,6 @@ namespace LiveKit
             source.Play();
         }
 
-
-        private float[] _data;
-        private int _channels;
-        private int _pendingSampleRate;
-
         // Called on Unity audio thread
         private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
@@ -99,6 +98,7 @@ namespace LiveKit
 
                 if (_pending)
                 {
+                    Debug.Log("Update Pending");
                     lock (_lock)
                     {
                         _pending = false;
@@ -127,6 +127,7 @@ namespace LiveKit
                             _data[i] = S16ToFloat(_tempBuffer[i]);
                         }
                     }
+                    Debug.Log("Update Done");
                 }
             }
         }
@@ -135,6 +136,7 @@ namespace LiveKit
         // Called on the MainThread (See FfiClient)
         private void OnAudioStreamEvent(AudioStreamEvent e)
         {
+            Debug.Log("Stream Event Start");
             if (e.StreamHandle != (ulong)Handle.DangerousGetHandle())
                 return;
 
@@ -158,6 +160,8 @@ namespace LiveKit
                     _buffer?.Write(data);
                 }
             }
+
+            Debug.Log("Stream Event End");
         }
     }
 }
