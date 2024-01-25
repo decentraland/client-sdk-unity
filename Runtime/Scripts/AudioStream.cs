@@ -37,19 +37,13 @@ namespace LiveKit
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
 
-            Debug.Log("Create resampler");
             _resampler = new AudioResampler();
-
-            
-
-            Debug.Log("Request new stream");
             var newAudioStream = new NewAudioStreamRequest();
             newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;
 
             var request = new FfiRequest();
             request.NewAudioStream = newAudioStream;
-            Debug.Log("Sending req");
             var resp = FfiClient.SendRequest(request);
             var streamInfo = resp.NewAudioStream.Stream;
 
@@ -88,7 +82,7 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            _readAudioThread = new Thread(async () => await Update());
+            _readAudioThread = new Thread(() => Update());
             _readAudioThread.Start();
         }
 
@@ -97,11 +91,11 @@ namespace LiveKit
             if (_readAudioThread != null) _readAudioThread.Abort();
         }
 
-        private async Task Update()
+        private Task Update()
         {
             while (true)
             {
-                await Task.Delay(Constants.TASK_DELAY);
+                Thread.Sleep(Constants.TASK_DELAY);
 
                 if (_pending)
                 {
@@ -124,8 +118,8 @@ namespace LiveKit
                         }
 
                         // "Send" the data to Unity
-                        //var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
-                        //int read = _buffer.Read(temp);
+                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
+                        int read = _buffer.Read(temp);
 
                         Array.Clear(_data, 0, _data.Length);
                         for (int i = 0; i < _data.Length; i++)
