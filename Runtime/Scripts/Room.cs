@@ -198,18 +198,20 @@ namespace LiveKit
                 case RoomEvent.MessageOneofCase.TrackSubscribed:
                     {
                         var info = e.TrackSubscribed.Track.Info;
+                        var trackHandle = new FfiHandle((IntPtr)e.TrackSubscribed.Track.Handle.Id);
                         var participant = Participants[e.TrackSubscribed.ParticipantSid];
                         var publication = participant.Tracks[info.Sid];
 
                         if (info.Kind == TrackKind.KindVideo)
                         {
-                            var videoTrack = new RemoteVideoTrack(null, info, this, participant);
+                            var videoTrack = new RemoteVideoTrack(trackHandle, info, this, participant);
                             publication.UpdateTrack(videoTrack);
                             TrackSubscribed?.Invoke(videoTrack, publication, participant);
                         }
                         else if (info.Kind == TrackKind.KindAudio)
                         {
-                            var audioTrack = new RemoteAudioTrack(null, info, this, participant);
+                            ;
+                            var audioTrack = new RemoteAudioTrack(trackHandle, info, this, participant);
                             publication.UpdateTrack(audioTrack);
                             TrackSubscribed?.Invoke(audioTrack, publication, participant);
                         }
