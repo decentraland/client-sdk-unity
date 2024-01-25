@@ -30,13 +30,13 @@ namespace LiveKit
             var remix = new RemixAndResampleRequest();
             remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
             remix.Buffer = new AudioFrameBufferInfo() { 
-                DataPtr = (ulong)frame.Handle.DangerousGetHandle(), 
+                DataPtr = (ulong)frame.Data, 
                 NumChannels = frame.NumChannels, 
                 SampleRate = frame.SampleRate, 
                 SamplesPerChannel = frame.SamplesPerChannel 
             };
-            remix.NumChannels = frame.NumChannels;
-            remix.SampleRate = frame.SampleRate;
+            remix.NumChannels = numChannels;
+            remix.SampleRate = sampleRate;
 
             var request = new FfiRequest();
             request.RemixAndResample = remix;
