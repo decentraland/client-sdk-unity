@@ -142,13 +142,12 @@ namespace LiveKit.Internal
             var respData = new Span<byte>(data.ToPointer(), size);
             var response = FfiEvent.Parser.ParseFrom(respData);
 
-            Utils.Debug("Callback... "+ response.ToString());
             // Run on the main thread, the order of execution is guaranteed by Unity
             // It uses a Queue internally
             if(Instance != null && Instance._context!=null) Instance._context.Post((resp) =>
             {
                 var response = resp as FfiEvent;
-                if(response.MessageCase !=  FfiEvent.MessageOneofCase.Logs) Utils.Debug("Callback: " + response.MessageCase);
+                if(response.MessageCase !=  FfiEvent.MessageOneofCase.Logs && response.MessageCase != FfiEvent.MessageOneofCase.CaptureAudioFrame) Utils.Debug("Callback: " + response.MessageCase);
                 switch (response.MessageCase)
                 {
                     case FfiEvent.MessageOneofCase.PublishData:

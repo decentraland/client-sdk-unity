@@ -22,7 +22,7 @@ namespace LiveKit
         private short[] _tempBuffer;
         private uint _numChannels;
         private uint _sampleRate;
-        private AudioResampler _resampler;
+        private AudioResampler _resampler = new AudioResampler();
         private object _lock = new object();
 
 
@@ -41,7 +41,6 @@ namespace LiveKit
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
 
-            _resampler = new AudioResampler();
             var newAudioStream = new NewAudioStreamRequest();
             newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;

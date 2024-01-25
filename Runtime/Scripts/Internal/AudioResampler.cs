@@ -25,13 +25,14 @@ namespace LiveKit
         }
 
         public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate) {
-            Debug.Log("Remix And Resample");
+            Debug.Log("R AND R");
+            Debug.Log("Remix And Resample: " + numChannels + " and sample " + sampleRate + " vs frame :" + frame.NumChannels + " and frame sample : " + sampleRate +" per chan "+ frame.SamplesPerChannel);
             var remix = new RemixAndResampleRequest();
             remix.ResamplerHandle = (ulong) Handle.DangerousGetHandle();
             remix.Buffer = new AudioFrameBufferInfo() { 
                 DataPtr = (ulong)frame.Handle.DangerousGetHandle(), 
-                NumChannels = frame.NumChannels, 
-                SampleRate = frame.SampleRate, 
+                NumChannels = numChannels, 
+                SampleRate = sampleRate, 
                 SamplesPerChannel = frame.SamplesPerChannel 
             };
             remix.NumChannels = numChannels;
