@@ -112,6 +112,7 @@ namespace LiveKit
                             SampleRate = _frame.SampleRate,
                             SamplesPerChannel = _frame.SamplesPerChannel
                         };
+                        Debug.Log($"Num Channels {_frame.NumChannels} Sample {_frame.SampleRate} and {_frame.SamplesPerChannel}");
                         var request = new FfiRequest();
                         request.CaptureAudioFrame = pushFrame;
                         FfiClient.SendRequest(request);

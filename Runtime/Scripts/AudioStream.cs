@@ -58,6 +58,7 @@ namespace LiveKit
 
         private void UpdateSource(AudioSource source)
         {
+            
             _audioSource = source;
             _audioFilter = source.gameObject.AddComponent<AudioFilter>();
             //_audioFilter.hideFlags = HideFlags.HideInInspector;
