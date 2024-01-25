@@ -35,8 +35,8 @@ namespace LiveKit
         {
             var newAudioSource = new NewAudioSourceRequest();
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
-            //newAudioSource.NumChannels = 2;
-            //newAudioSource.SampleRate = 48000;
+            newAudioSource.NumChannels = 2;
+            newAudioSource.SampleRate = 48000;
 
             var request = new FfiRequest();
             request.NewAudioSource = newAudioSource;
@@ -107,21 +107,15 @@ namespace LiveKit
                         pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
                         pushFrame.Buffer = new AudioFrameBufferInfo()
                         {
-                            DataPtr = (ulong)_frame.Data, NumChannels = _frame.NumChannels, SampleRate = _frame.SampleRate,
+                            DataPtr = (ulong)_frame.Data,
+                            NumChannels = _frame.NumChannels,
+                            SampleRate = _frame.SampleRate,
                             SamplesPerChannel = _frame.SamplesPerChannel
                         };
                         var request = new FfiRequest();
                         request.CaptureAudioFrame = pushFrame;
-
                         FfiClient.SendRequest(request);
                     }
-
-                    Utils.Debug($"Pushed audio frame with {_data.Length} sample rate "
-                                + _frame.SampleRate
-                                + "  num channels "
-                                + _frame.NumChannels
-                                + " and samplers per channel "
-                                + _frame.SamplesPerChannel);
                 }
                 catch (Exception e)
                 {
