@@ -337,7 +337,6 @@ namespace LiveKit
                 {
                     var publication = new RemoteTrackPublication(pubInfo.Info);
                     participant._tracks.Add(publication.Sid, publication);
-                    publication.SetSubscribed(true);
                 }
             }
 
