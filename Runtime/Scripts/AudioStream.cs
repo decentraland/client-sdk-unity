@@ -37,15 +37,19 @@ namespace LiveKit
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
 
+            Debug.Log("Create resampler");
             _resampler = new AudioResampler();
 
+            
+
+            Debug.Log("Request new stream");
             var newAudioStream = new NewAudioStreamRequest();
-            newAudioStream.TrackHandle = (ulong)room.Handle.DangerousGetHandle();
+            newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
             newAudioStream.Type = AudioStreamType.AudioStreamNative;
 
             var request = new FfiRequest();
             request.NewAudioStream = newAudioStream;
-
+            Debug.Log("Sending req");
             var resp = FfiClient.SendRequest(request);
             var streamInfo = resp.NewAudioStream.Stream;
 
