@@ -26,12 +26,13 @@ namespace LiveKit
         private object _lock = new object();
 
 
-        private Thread? _readAudioThread;
+        private Thread? _readAudioThread; 
         private bool _pending = false;
 
         private float[] _data;
         private int _channels;
         private int _pendingSampleRate;
+        private bool _playing = false;
 
         public AudioStream(IAudioTrack audioTrack, AudioSource source)
         {
@@ -40,7 +41,7 @@ namespace LiveKit
 
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
- 
+             
             using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
             var newAudioStream = request.request;
             newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
@@ -50,7 +51,6 @@ namespace LiveKit
             var streamInfo = res.NewAudioStream.Stream;
 
             _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
-            FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
 
             UpdateSource(source);
         }
@@ -60,9 +60,7 @@ namespace LiveKit
             
             _audioSource = source;
             _audioFilter = source.gameObject.AddComponent<AudioFilter>();
-            //_audioFilter.hideFlags = HideFlags.HideInInspector;
-            _audioFilter.AudioRead += OnAudioRead;
-            source.Play();
+    
         }
 
         // Called on Unity audio thread
@@ -80,13 +78,27 @@ namespace LiveKit
         public void Start()
         {
             Stop();
+            _playing = true;
             _readAudioThread = new Thread(Update);
             _readAudioThread.Start();
+
+            _audioFilter.AudioRead += OnAudioRead;
+            _audioSource.Play();
+
+            FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
         }
 
         public void Stop()
         {
+            _playing = false;
             _readAudioThread?.Abort();
+
+            if(_audioFilter)
+                _audioFilter.AudioRead -= OnAudioRead;
+            if (_audioSource) _audioSource.Stop();
+
+            if(FfiClient.Instance !=null)
+                FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
         }
 
         private void Update()
@@ -118,7 +130,7 @@ namespace LiveKit
                         // "Send" the data to Unity
                         var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
                         int read = _buffer.Read(temp);
-
+                        Debug.LogError("REad that buffer");
                         Array.Clear(_data, 0, _data.Length);
                         for (int i = 0; i < _data.Length; i++)
                         {
@@ -133,6 +145,8 @@ namespace LiveKit
         // Called on the MainThread (See FfiClient)
         private void OnAudioStreamEvent(AudioStreamEvent e)
         {
+            if (!_playing) return;
+
             if (e.StreamHandle != (ulong)Handle.DangerousGetHandle())
                 return;
 
@@ -141,7 +155,7 @@ namespace LiveKit
 
             var info = e.FrameReceived.Frame.Info;
 
-            //Debug.Log("Stream Event Start "+e.FrameReceived.Frame.Info.ToString() +" : "+e.FrameReceived.Frame.Info.SamplesPerChannel);
+            Debug.Log("Stream Event Start "+e.FrameReceived.Frame.Info.ToString() +" : "+e.FrameReceived.Frame.Info.SamplesPerChannel);
             var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
             var frame = new AudioFrame(handle, info);
 
