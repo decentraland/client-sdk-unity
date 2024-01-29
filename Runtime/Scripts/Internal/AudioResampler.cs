@@ -31,13 +31,15 @@ namespace LiveKit
                             SamplesPerChannel = frame.SamplesPerChannel
                         };
 
+
+
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;
             using var response = request.Send();
             FfiResponse res = response;
             var bufferInfo = res.RemixAndResample.Buffer;
             var handle = new FfiHandle((IntPtr)bufferInfo.Handle.Id);
-            return new AudioFrame(handle, remix.Buffer);
+            return new AudioFrame(handle, bufferInfo.Info);
         }
     }
 }
