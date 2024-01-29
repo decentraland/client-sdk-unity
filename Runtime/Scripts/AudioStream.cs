@@ -29,7 +29,7 @@ namespace LiveKit
         private Thread? _readAudioThread; 
         private bool _pending = false;
 
-        private float[] _data;
+        //private float[] _data;
         private int _channels;
         private int _pendingSampleRate;
         private bool _playing = false;
@@ -57,30 +57,16 @@ namespace LiveKit
 
         private void UpdateSource(AudioSource source)
         {
-            
             _audioSource = source;
             _audioFilter = source.gameObject.AddComponent<AudioFilter>();
-    
-        }
-
-        // Called on Unity audio thread
-        private void OnAudioRead(float[] data, int channels, int sampleRate)
-        {
-            lock (_lock)
-            {
-                _data = data;
-                _channels = channels;
-                _pendingSampleRate = sampleRate;
-                _pending = true;
-            }
         }
 
         public void Start()
         {
             Stop();
             _playing = true;
-            _readAudioThread = new Thread(Update);
-            _readAudioThread.Start();
+            //_readAudioThread = new Thread(Update);
+            //_readAudioThread.Start();
 
             _audioFilter.AudioRead += OnAudioRead;
             _audioSource.Play();
@@ -101,22 +87,35 @@ namespace LiveKit
                 FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
         }
 
-        private void Update()
+        // Called on Unity audio thread
+        private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
-            while (true)
+            lock (_lock)
             {
-                Thread.Sleep(Constants.TASK_DELAY);
+                //_data = data;
+                _channels = channels;
+                _pendingSampleRate = sampleRate;
+                _pending = true;
+                Debug.Log("Audio Read. Pending buffer");
+        //    }
+        //}
 
-                if (_pending)
-                { 
-                    lock (_lock)
-                    {
+        //private void Update()
+        //{
+        //    while (true)
+        //    {
+        //        Thread.Sleep(Constants.TASK_DELAY);
+
+        //        if (_pending)
+        //        { 
+        //            lock (_lock)
+        //            {
                         _pending = false;
-                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || _data.Length != _tempBuffer.Length)
+                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || data.Length != _tempBuffer.Length)
                         {
                             int size = (int)(_channels * _sampleRate * 0.2);
                             _buffer = new RingBuffer(size * sizeof(short));
-                            _tempBuffer = new short[_data.Length];
+                            _tempBuffer = new short[data.Length];
                             _numChannels = (uint)_channels;
                             _sampleRate = (uint)_pendingSampleRate;
                         }
@@ -128,18 +127,18 @@ namespace LiveKit
                         }
 
                         // "Send" the data to Unity
-                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
+                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
                         int read = _buffer.Read(temp);
                         Debug.LogError("REad that buffer");
-                        Array.Clear(_data, 0, _data.Length);
-                        for (int i = 0; i < _data.Length; i++)
+                        Array.Clear(data, 0, data.Length);
+                        for (int i = 0; i < data.Length; i++)
                         {
-                            _data[i] = S16ToFloat(_tempBuffer[i]);
+                            data[i] = S16ToFloat(_tempBuffer[i]);
                         }
                     } 
                 }
-            }
-        }
+        //    }
+        //}
 
 
         // Called on the MainThread (See FfiClient)
