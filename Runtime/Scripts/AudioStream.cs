@@ -29,7 +29,7 @@ namespace LiveKit
         private Thread? _readAudioThread; 
         private bool _pending = false;
 
-        private float[] _data;
+      //  private float[] _data;
         private int _channels;
         private int _pendingSampleRate;
         private bool _playing = false;
@@ -92,7 +92,7 @@ namespace LiveKit
         {
             lock (_lock)
             {
-                _data = data;
+               // _data = data;
                 _channels = channels;
                 _pendingSampleRate = sampleRate;
                 _pending = true;
@@ -118,7 +118,7 @@ namespace LiveKit
                         {
                             int size = (int)(_channels * _pendingSampleRate * .2f);
                             _buffer = new RingBuffer(size * sizeof(short));
-                            _tempBuffer = new short[_data.Length];
+                            _tempBuffer = new short[data.Length];
                             _numChannels = (uint)_channels;
                             _sampleRate = (uint)_pendingSampleRate;
                         }
@@ -130,12 +130,12 @@ namespace LiveKit
                         }
 
                         // "Send" the data to Unity
-                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
+                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
                         int read = _buffer.Read(temp);
-                        Array.Clear(_data, 0, _data.Length);
-                        for (int i = 0; i < _data.Length; i++)
+                        Array.Clear(data, 0, data.Length);
+                        for (int i = 0; i < data.Length; i++)
                         {
-                            _data[i] = S16ToFloat(_tempBuffer[i]);
+                    data[i] = S16ToFloat(_tempBuffer[i]);
                             //if (i == 1 && _data[1] != 0) Debug.LogError("Buffer Read: " + _data[1]);
                             //if (i == 1 && temp[1] != 0) Debug.LogError("Buffer Temp: " + temp[1]);
                             //if (i == 1 && _tempBuffer[1] != 0) Debug.LogError("Buffer Temp B: " + _tempBuffer[1]);
