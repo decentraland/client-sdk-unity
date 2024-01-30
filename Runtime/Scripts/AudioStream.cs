@@ -114,7 +114,7 @@ namespace LiveKit
         //            lock (_lock)
         //            {
                         _pending = false;
-                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || _data.Length != _tempBuffer.Length)
+                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || data.Length != _tempBuffer.Length)
                         {
                             int size = (int)(_channels * _pendingSampleRate * .2f);
                             _buffer = new RingBuffer(size * sizeof(short));
