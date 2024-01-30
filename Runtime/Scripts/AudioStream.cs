@@ -65,8 +65,8 @@ namespace LiveKit
         {
             Stop();
             _playing = true;
-            _readAudioThread = new Thread(Update);
-            _readAudioThread.Start();
+            //_readAudioThread = new Thread(Update);
+            //_readAudioThread.Start();
 
             _audioFilter.AudioRead += OnAudioRead;
             _audioSource.Play();
@@ -100,19 +100,19 @@ namespace LiveKit
                 //{
                 //    if(data[1]!=0) Debug.LogError("Sec: " + data[1]);
                 //}
-            }
-        }
+        //    }
+        //}
 
-        private void Update()
-        {
-            while (true)
-            {
-                Thread.Sleep(Constants.TASK_DELAY);
+        //private void Update()
+        //{
+        //    while (true)
+        //    {
+        //        Thread.Sleep(Constants.TASK_DELAY);
 
-                if (_pending)
-                { 
-                    lock (_lock)
-                    {
+        //        if (_pending)
+        //        { 
+        //            lock (_lock)
+        //            {
                         _pending = false;
                         if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || _data.Length != _tempBuffer.Length)
                         {
@@ -144,8 +144,8 @@ namespace LiveKit
                        // _audioSource.clip.SetData(_data, 0);
                     } 
                 }
-            }
-        }
+        //    }
+        //}
 
 
         // Called on the MainThread (See FfiClient)
