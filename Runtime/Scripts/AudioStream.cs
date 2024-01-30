@@ -96,11 +96,10 @@ namespace LiveKit
                 _channels = channels;
                 _pendingSampleRate = sampleRate;
                 _pending = true;
-                Debug.Log("Audio Read. Pending buffer : "+data.Length   +"  CHANNELS: "+_channels +" and rate "+sampleRate);
-                if (data != null && data.Length > 1)
-                {
-                    if(data[1]!=0) Debug.LogError("Sec: " + data[1]);
-                }
+                //if (data != null && data.Length > 1)
+                //{
+                //    if(data[1]!=0) Debug.LogError("Sec: " + data[1]);
+                //}
             }
         }
 
@@ -122,7 +121,6 @@ namespace LiveKit
                             _tempBuffer = new short[_data.Length];
                             _numChannels = (uint)_channels;
                             _sampleRate = (uint)_pendingSampleRate;
-                            Debug.LogError("New buffer   "+size + " because "+_channels +" and "+ _pendingSampleRate);
                         }
 
 
@@ -134,14 +132,13 @@ namespace LiveKit
                         // "Send" the data to Unity
                         var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, _data.Length));
                         int read = _buffer.Read(temp);
-                        Debug.LogError("Read that buffer "+_data.Length +":  "+read);
                         Array.Clear(_data, 0, _data.Length);
                         for (int i = 0; i < _data.Length; i++)
                         {
                             _data[i] = S16ToFloat(_tempBuffer[i]);
-                            if (i == 1 && _data[1] != 0) Debug.LogError("Buffer Read: " + _data[1]);
-                            if (i == 1 && temp[1] != 0) Debug.LogError("Buffer Temp: " + temp[1]);
-                            if (i == 1 && _tempBuffer[1] != 0) Debug.LogError("Buffer Temp B: " + _tempBuffer[1]);
+                            //if (i == 1 && _data[1] != 0) Debug.LogError("Buffer Read: " + _data[1]);
+                            //if (i == 1 && temp[1] != 0) Debug.LogError("Buffer Temp: " + temp[1]);
+                            //if (i == 1 && _tempBuffer[1] != 0) Debug.LogError("Buffer Temp B: " + _tempBuffer[1]);
                         }
                     } 
                 }
@@ -174,13 +171,9 @@ namespace LiveKit
 
                 unsafe
                 {
-                    // 480 per channel? Num of channels 1??? 
-
                     var uFrame = _resampler.RemixAndResample(frame, _numChannels, _sampleRate);
                     var data = new Span<byte>(uFrame.Data.ToPointer(), uFrame.Length);
-                    if (data != null && data.Length > 1) Debug.LogError(data.Length+ " D: " + data[1] +"  "+ uFrame.SamplesPerChannel  +" : "+uFrame.NumChannels +" and "+ sizeof(short));  // SamplesPerChannel * NumChannels * sizeof(short)
-                    var response = _buffer?.Write(data);
-                    Debug.LogError("BUFFER WRITE SUCCES:" + response);
+                    _buffer?.Write(data);
                 }
             }
              
