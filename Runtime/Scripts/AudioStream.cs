@@ -5,6 +5,8 @@ using LiveKit.Proto;
 using System.Threading;
 using LiveKit.Internal.FFIClients.Requests;
 using System.Runtime.InteropServices;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace LiveKit
 {
@@ -24,14 +26,10 @@ namespace LiveKit
         private uint _sampleRate;
         private AudioResampler _resampler = new AudioResampler();
         private object _lock = new object();
+        private Queue<AudioStreamEvent> _pendingStreamEvents = new Queue<AudioStreamEvent>();
 
+        private Thread? _writeAudioThread;
 
-        private Thread? _readAudioThread; 
-        private bool _pending = false;
-
-      //  private float[] _data;
-        private int _channels;
-        private int _pendingSampleRate;
         private bool _playing = false;
 
         public AudioStream(IAudioTrack audioTrack, AudioSource source)
@@ -41,7 +39,7 @@ namespace LiveKit
 
             if (!audioTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("audiotrack's participant is invalid");
-             
+
             using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
             var newAudioStream = request.request;
             newAudioStream.TrackHandle = (ulong)audioTrack.Handle.DangerousGetHandle();
@@ -65,8 +63,8 @@ namespace LiveKit
         {
             Stop();
             _playing = true;
-            //_readAudioThread = new Thread(Update);
-            //_readAudioThread.Start();
+            _writeAudioThread = new Thread(Update);
+            _writeAudioThread.Start();
 
             _audioFilter.AudioRead += OnAudioRead;
             _audioSource.Play();
@@ -77,13 +75,13 @@ namespace LiveKit
         public void Stop()
         {
             _playing = false;
-            _readAudioThread?.Abort();
+            _writeAudioThread?.Abort();
 
-            if(_audioFilter)
+            if (_audioFilter)
                 _audioFilter.AudioRead -= OnAudioRead;
             if (_audioSource) _audioSource.Stop();
 
-            if(FfiClient.Instance !=null)
+            if (FfiClient.Instance != null)
                 FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
         }
 
@@ -92,60 +90,31 @@ namespace LiveKit
         {
             lock (_lock)
             {
-               // _data = data;
-                _channels = channels;
-                _pendingSampleRate = sampleRate;
-                _pending = true;
-                //if (data != null && data.Length > 1)
-                //{
-                //    if(data[1]!=0) Debug.LogError("Sec: " + data[1]);
-                //}
-        //    }
-        //}
-
-        //private void Update()
-        //{
-        //    while (true)
-        //    {
-        //        Thread.Sleep(Constants.TASK_DELAY);
-
-        //        if (_pending)
-        //        { 
-        //            lock (_lock)
-        //            {
-                        _pending = false;
-                        if (_buffer == null || _channels != _numChannels || _pendingSampleRate != _sampleRate || data.Length != _tempBuffer.Length)
-                        {
-                            int size = (int)(_channels * _pendingSampleRate * .2f);
-                            _buffer = new RingBuffer(size * sizeof(short));
-                            _tempBuffer = new short[data.Length];
-                            _numChannels = (uint)_channels;
-                            _sampleRate = (uint)_pendingSampleRate;
-                        }
-
-
-                        static float S16ToFloat(short v)
-                        {
-                            return v / 32768f;
-                        }
-
-                        // "Send" the data to Unity
-                        var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
-                        int read = _buffer.Read(temp);
-                        Array.Clear(data, 0, data.Length);
-                        for (int i = 0; i < data.Length; i++)
-                        {
-                    data[i] = S16ToFloat(_tempBuffer[i]);
-                            //if (i == 1 && _data[1] != 0) Debug.LogError("Buffer Read: " + _data[1]);
-                            //if (i == 1 && temp[1] != 0) Debug.LogError("Buffer Temp: " + temp[1]);
-                            //if (i == 1 && _tempBuffer[1] != 0) Debug.LogError("Buffer Temp B: " + _tempBuffer[1]);
-                        }
-
-                       // _audioSource.clip.SetData(_data, 0);
-                    } 
+                if (_buffer == null || channels != _numChannels || sampleRate != _sampleRate || data.Length != _tempBuffer.Length)
+                {
+                    int size = (int)(channels * sampleRate * .2f);
+                    _buffer = new RingBuffer(size * sizeof(short));
+                    _tempBuffer = new short[data.Length];
+                    _numChannels = (uint)channels;
+                    _sampleRate = (uint)sampleRate;
                 }
-        //    }
-        //}
+
+                static float S16ToFloat(short v)
+                {
+                    return v / 32768f;
+                }
+
+                // "Send" the data to Unity
+                var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
+                int read = _buffer.Read(temp);
+                Array.Clear(data, 0, data.Length);
+                for (int i = 0; i < data.Length; i++)
+                {
+                    data[i] = S16ToFloat(_tempBuffer[i]);
+                }
+            }
+        }
+
 
 
         // Called on the MainThread (See FfiClient)
@@ -159,26 +128,39 @@ namespace LiveKit
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
-            var info = e.FrameReceived.Frame.Info;
+            if (_numChannels == 0)
+                return;
 
-            Debug.Log("Stream Event Start "+e.FrameReceived.Frame.Info.ToString() +" : "+e.FrameReceived.Frame.Info.SamplesPerChannel);
-            var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
-            var frame = new AudioFrame(handle, info);
+            _pendingStreamEvents.Enqueue(e);
+        }
 
-            lock (_lock)
+        private void Update()
+        {
+            while (true)
             {
-                if (_numChannels == 0)
-                    return;
+                Thread.Sleep(Constants.TASK_DELAY);
 
-
-                unsafe
+                if (_pendingStreamEvents.Count > 0)
                 {
-                    var uFrame = _resampler.RemixAndResample(frame, _numChannels, _sampleRate);
-                    var data = new Span<byte>(uFrame.Data.ToPointer(), uFrame.Length);
-                    _buffer?.Write(data);
+                    var e = _pendingStreamEvents.Dequeue();
+
+                    var info = e.FrameReceived.Frame.Info;
+                    Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
+                    var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
+                    var frame = new AudioFrame(handle, info);
+
+                    lock (_lock)
+                    {
+                        unsafe
+                        {
+                            var uFrame = _resampler.RemixAndResample(frame, _numChannels, _sampleRate);
+                            var data = new Span<byte>(uFrame.Data.ToPointer(), uFrame.Length);
+                            _buffer?.Write(data);
+                        }
+                    }
+
                 }
             }
-             
         }
     }
 }
