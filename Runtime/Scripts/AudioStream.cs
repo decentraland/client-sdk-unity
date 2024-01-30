@@ -140,6 +140,8 @@ namespace LiveKit
                             //if (i == 1 && temp[1] != 0) Debug.LogError("Buffer Temp: " + temp[1]);
                             //if (i == 1 && _tempBuffer[1] != 0) Debug.LogError("Buffer Temp B: " + _tempBuffer[1]);
                         }
+
+                        _audioSource.clip.SetData(_data, read);
                     } 
                 }
             }
