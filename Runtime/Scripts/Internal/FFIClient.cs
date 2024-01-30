@@ -20,6 +20,7 @@ namespace LiveKit.Internal
     {
         private static readonly Lazy<FfiClient> instance = new(() => new FfiClient());
         public static FfiClient Instance => instance.Value;
+        private static bool _isDisposed;
 
         internal SynchronizationContext? _context;
 
@@ -73,14 +74,14 @@ namespace LiveKit.Internal
         {
             Initialize();
         }
-        #else
+#else
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Init()
         {
             Application.quitting += Quit;
             FfiClient.Initialize();
         }
-        #endif
+#endif
 
         private static void Quit()
         {
@@ -88,7 +89,8 @@ namespace LiveKit.Internal
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
             #endif
-            Instance.Dispose();
+                Instance.Dispose();
+            
         }
 
         [RuntimeInitializeOnLoadMethod]
@@ -113,6 +115,7 @@ namespace LiveKit.Internal
 
         public void Dispose()
         {
+            _isDisposed = true;
             // Stop all rooms synchronously
             // The rust lk implementation should also correctly dispose WebRTC
             SendRequest(
@@ -164,6 +167,7 @@ namespace LiveKit.Internal
         [AOT.MonoPInvokeCallback(typeof(FFICallbackDelegate))]
         static unsafe void FFICallback(IntPtr data, int size)
         {
+            if (_isDisposed) return;
             var respData = new Span<byte>(data.ToPointer(), size);
             var response = FfiEvent.Parser.ParseFrom(respData);
 

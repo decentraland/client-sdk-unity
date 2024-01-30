@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Google.Protobuf.Collections;
 using System.Threading;
 using LiveKit.Internal.FFIClients.Requests;
+using UnityEngine;
 
 namespace LiveKit
 {
@@ -183,6 +184,7 @@ namespace LiveKit
                     break;
                 case RoomEvent.MessageOneofCase.TrackUnpublished:
                     {
+                        Debug.LogError("UNPUBLISHED >>> ");
                         var participant = Participants[e.TrackUnpublished.ParticipantSid];
                         var publication = participant.Tracks[e.TrackUnpublished.PublicationSid];
                         participant._tracks.Remove(publication.Sid);

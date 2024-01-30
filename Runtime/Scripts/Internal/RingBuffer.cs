@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace LiveKit.Internal
 {
@@ -13,6 +14,7 @@ namespace LiveKit.Internal
 
         public RingBuffer(int size)
         {
+            Debug.LogError("CREATING BUFFER OF SIZE: " + size);
             _buffer = new byte[size];
             _sameWrap = true;
         }
@@ -33,6 +35,7 @@ namespace LiveKit.Internal
             }
             data.Slice(write - n, n).CopyTo(_buffer.AsSpan(_writePos));
             _writePos += n;
+            Debug.Log("Write: " + write + " because " + _writePos + " n " + n + " and free " + free + " for data le " + data.Length + " and margin " + margin);
             return write;
         }
 
@@ -118,6 +121,7 @@ namespace LiveKit.Internal
 
         public int AvailableWrite()
         {
+            Debug.LogError("Avail: " + _buffer.Length);
             return _buffer.Length - AvailableRead();
         }
     }
