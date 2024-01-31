@@ -32,13 +32,15 @@ namespace LiveKit
     {
         public Texture Texture { get; }
         private NativeArray<byte> data;
-        private bool reading = false;
+        private bool _reading = false;
         private bool isDisposed = true;
-        private Thread? readVideoThread;
+        //private Thread? readVideoThread;
+        private bool _playing = false;
 
         public TextureVideoSource(Texture texture)
         {
             Texture = texture;
+            Debug.LogError("Texture: " + texture.width + " and " + texture.height);
             data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
             isDisposed = false;
         }
@@ -46,13 +48,15 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            readVideoThread = new Thread(Update);
-            readVideoThread.Start();
+            _playing = true;
+            //readVideoThread = new Thread(Update);
+            //readVideoThread.Start();
         }
 
         public void Stop()
         {
-            readVideoThread?.Abort();
+            _playing = false;
+               //readVideoThread?.Abort();
         }
 
         ~TextureVideoSource()
@@ -64,47 +68,50 @@ namespace LiveKit
             }
         }
 
-
-        private void Update()
+        int count;
+        public void Update()
         {
-            while (true)
+            count++;
+            //while (true)
+            //{
+            //    Thread.Sleep(Constants.TASK_DELAY);
+            if (_playing && count%300==0)
             {
-                Thread.Sleep(Constants.TASK_DELAY);
                 ReadBuffer();
                 ReadBack();
             }
+            //}
         }
 
         // Read the texture data into a native array asynchronously
         internal void ReadBuffer()
         {
-            if (reading)
+            if (_reading)
                 return;
 
-            reading = true;
+            Debug.Log("Request into native array " );
+            _reading = true;
             AsyncGPUReadback.RequestIntoNativeArray(ref data, Texture, 0, TextureFormat.RGBA32, OnReadback);
         }
 
-        private AsyncGPUReadbackRequest _readBackRequest;
         private bool _requestPending = false;
 
         private void OnReadback(AsyncGPUReadbackRequest req)
         {
-            _readBackRequest = req;
-            _requestPending = true;
+            if (!req.hasError)
+            {
+                _requestPending = true;
+            } else
+            {
+                Debug.Log("Read Back Failed: "+req.ToString());
+                _reading = false;
+            }
         }
 
         private void ReadBack()
         {
             if (_requestPending && !isDisposed)
             {
-                var req = _readBackRequest;
-                if (req.hasError)
-                {
-                    Utils.Error("failed to read texture data");
-                    return;
-                }
-
                 // ToI420
                 var argbInfo = new ArgbBufferInfo(); // TODO: MindTrust_VID
                 unsafe
@@ -132,15 +139,20 @@ namespace LiveKit
                 frameInfo.Rotation = VideoRotation._0;
                 frameInfo.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
+
                 using var request = FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
                 var capture = request.request;
                 capture.SourceHandle = (ulong)Handle.DangerousGetHandle();
                 capture.Handle = (ulong)buffer.Handle.DangerousGetHandle();
                 capture.Frame = frameInfo;
+                Debug.Log("Sending Frame");
                 using var response = request.Send();
-                reading = false;
+                //FfiResponse captureFrameRes = response;
+                //captureFrameRes.CaptureVideoFrame.;
+                _reading = false;
                 _requestPending = false;
             }
         }
+
     }
 }

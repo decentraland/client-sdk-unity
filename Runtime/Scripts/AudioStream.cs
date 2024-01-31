@@ -29,7 +29,6 @@ namespace LiveKit
         private Queue<AudioStreamEvent> _pendingStreamEvents = new Queue<AudioStreamEvent>();
 
         private Thread? _writeAudioThread;
-
         private bool _playing = false;
 
         public AudioStream(IAudioTrack audioTrack, AudioSource source)

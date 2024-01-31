@@ -103,14 +103,14 @@ namespace LiveKit.Internal
 
         static void Initialize()
         {
-            #if LK_VERBOSE
+#if LK_VERBOSE
             const bool captureLogs = true;
-            #else
+#else
             const bool captureLogs = false;
-            #endif
+#endif
 
             NativeMethods.LiveKitInitialize(FFICallback, captureLogs);
-            Utils.Debug("FFIServer - Initialized");
+            Utils.Debug("FFIServer - Initialized. Capture Logs? "+captureLogs);
         }
 
         public void Dispose()
@@ -177,7 +177,7 @@ namespace LiveKit.Internal
                 Instance._context.Post((resp) =>
                 {
                     var response = resp as FfiEvent;
-                    if(response.MessageCase !=  FfiEvent.MessageOneofCase.Logs && response.MessageCase != FfiEvent.MessageOneofCase.CaptureAudioFrame) Utils.Debug("Callback: " + response.MessageCase);
+                    if(response.MessageCase !=  FfiEvent.MessageOneofCase.Logs && response.MessageCase != FfiEvent.MessageOneofCase.CaptureAudioFrame) Utils.Debug("Callback: " + response.MessageCase +": "+response.ToString());
 
                     switch (response.MessageCase)
                     {
