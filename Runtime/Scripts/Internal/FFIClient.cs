@@ -147,7 +147,7 @@ namespace LiveKit.Internal
 
                         var dataSpan = new Span<byte>(dataPtr, dataLen);
                         var response = responseParser.ParseFrom(dataSpan)!;
-                        handle.Dispose();
+                        NativeMethods.FfiDropHandle(handle);
                         return response;
                     }
                 }
