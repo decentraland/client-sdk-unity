@@ -55,7 +55,7 @@ namespace LiveKit
 
             using var request = FFIBridge.Instance.NewRequest<NewVideoStreamRequest>();
             var newVideoStream = request.request;
-            newVideoStream.TrackHandle = videoTrack.Handle.DangerousGetHandle();
+            newVideoStream.TrackHandle = (ulong)videoTrack.Handle.DangerousGetHandle();
             //newVideoStream.ParticipantSid = participant.Sid;
             //newVideoStream.TrackSid = videoTrack.Sid;
             newVideoStream.Type = VideoStreamType.VideoStreamNative;
