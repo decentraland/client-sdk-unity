@@ -23,6 +23,6 @@ namespace LiveKit.Internal
 
         //TODO optimise FfiHandle, can be replaced by FfiHandleId = uint64_t
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "livekit_ffi_initialize")]
-        internal extern static unsafe FfiHandle LiveKitInitialize(FFICallbackDelegate cb, bool captureLogs);
+        internal extern static IntPtr LiveKitInitialize(FFICallbackDelegate cb, bool captureLogs);
     }
 }
