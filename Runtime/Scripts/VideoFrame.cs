@@ -136,7 +136,7 @@ namespace LiveKit
 
             using var request = FFIBridge.Instance.NewRequest<ToArgbRequest>();
             var argb = request.request;
-            //argb.Buffer = handleId;
+            argb.Buffer = Info;
             argb.DstPtr = (ulong)dst;
             argb.DstFormat = format;
             argb.DstStride = dstStride;
