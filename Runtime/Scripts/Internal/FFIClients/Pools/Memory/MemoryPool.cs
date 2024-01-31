@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace LiveKit.Internal.FFIClients.Pools.Memory
 {
+    [Obsolete("Use ArrayMemoryPool instead", true)]
     public class MemoryPool : IMemoryPool
     {
         private readonly Dictionary<int, Queue<byte[]>> buffers = new();

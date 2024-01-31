@@ -37,7 +37,7 @@ namespace LiveKit.Internal
         public event VideoStreamEventReceivedDelegate? VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate? AudioStreamEventReceived;
 
-        public FfiClient() : this(Pools.NewFfiResponsePool(), new MemoryPool())
+        public FfiClient() : this(Pools.NewFfiResponsePool(), new ArrayMemoryPool())
         {
         }
 
