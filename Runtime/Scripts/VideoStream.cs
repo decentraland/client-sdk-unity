@@ -51,10 +51,11 @@ namespace LiveKit
 
             if (!videoTrack.Participant.TryGetTarget(out var participant))
                 throw new InvalidOperationException("videotrack's participant is invalid");
+             
 
             using var request = FFIBridge.Instance.NewRequest<NewVideoStreamRequest>();
             var newVideoStream = request.request;
-            newVideoStream.TrackHandle = (ulong)room.Handle.DangerousGetHandle();
+            newVideoStream.TrackHandle = videoTrack.Handle.DangerousGetHandle();
             //newVideoStream.ParticipantSid = participant.Sid;
             //newVideoStream.TrackSid = videoTrack.Sid;
             newVideoStream.Type = VideoStreamType.VideoStreamNative;
