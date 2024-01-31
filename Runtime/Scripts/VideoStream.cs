@@ -23,10 +23,11 @@ namespace LiveKit
 
         private VideoStreamInfo _info;
         private bool _dirty = false;
+        private bool _playing = false;
         private volatile bool disposed = false;
 
         // Thread for parsing textures
-        private Thread? frameThread;
+        //private Thread? frameThread;
 
         /// Called when we receive a new frame from the VideoTrack
         public event FrameReceiveDelegate FrameReceived;
@@ -72,16 +73,18 @@ namespace LiveKit
             Dispose(false);
         }
 
-        public void StartStreaming()
+        public void Start()
         {
-            StopStreaming();
-            frameThread = new Thread(GetFrame);
-            frameThread.Start();
+            Stop();
+            _playing = true;
+            //frameThread = new Thread(GetFrame);
+            //frameThread.Start();
         }
 
-        public void StopStreaming()
+        public void Stop()
         {
-            frameThread?.Abort();
+            _playing = false;
+            //frameThread?.Abort();
         }
 
 
@@ -116,16 +119,17 @@ namespace LiveKit
             Texture.Apply();
         }
 
-        private void GetFrame()
+        public void Update()
         {
-            while (!disposed)
+            if (!_playing || disposed) return;
+            //while (!disposed)
             {
-                Thread.Sleep(Constants.TASK_DELAY);
+                //Thread.Sleep(Constants.TASK_DELAY);
 
                 lock (_lock)
                 {
                     if (VideoBuffer == null || !VideoBuffer.IsValid || !_dirty)
-                        continue;
+                        return;
 
                     _dirty = false;
                     var rWidth = VideoBuffer.Width;
