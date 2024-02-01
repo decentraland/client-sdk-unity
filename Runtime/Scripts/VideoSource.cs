@@ -16,6 +16,7 @@ namespace LiveKit
 
         protected VideoSourceInfo _info;
 
+
         public RtcVideoSource()
         {
             using var request = FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
@@ -40,7 +41,6 @@ namespace LiveKit
         public TextureVideoSource(Texture texture)
         {
             Texture = texture;
-            Debug.LogError("Texture: " + texture.width + " and " + texture.height);
             data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
             isDisposed = false;
         }
@@ -89,9 +89,19 @@ namespace LiveKit
             if (_reading)
                 return;
 
-            Debug.Log("Request into native array " );
+            Debug.Log("Request into native array "+Texture.graphicsFormat);
+
+            IntPtr pointer = Texture.GetNativeTexturePtr();
+          
+
             _reading = true;
-            AsyncGPUReadback.RequestIntoNativeArray(ref data, Texture, 0, TextureFormat.RGBA32, OnReadback);
+            //Texture.graphicsFormat
+            // try once then
+            Texture2D dest = new Texture2D(Texture.width, Texture.height, TextureFormat.RGBA32, false);
+            //dest.UpdateExternalTexture(pointer);
+            Debug.Log("Dest type? "+dest.graphicsFormat);
+            Graphics.CopyTexture(Texture, dest);
+            AsyncGPUReadback.RequestIntoNativeArray(ref data, dest, 0, TextureFormat.ARGB32, OnReadback);
         }
 
         private bool _requestPending = false;
