@@ -32,7 +32,7 @@ namespace LiveKit
     public class TextureVideoSource : RtcVideoSource
     {
         public Texture Texture { get; }
-        private NativeArray<byte> data;
+        private NativeArray<byte> _data;
         private bool _reading = false;
         private bool isDisposed = true;
         //private Thread? readVideoThread;
@@ -41,7 +41,7 @@ namespace LiveKit
         public TextureVideoSource(Texture texture)
         {
             Texture = texture;
-            data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
+            _data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
             isDisposed = false;
         }
 
@@ -63,7 +63,7 @@ namespace LiveKit
         {
             if (!isDisposed)
             {
-                data.Dispose();
+                _data.Dispose();
                 isDisposed = true;
             }
         }
@@ -101,7 +101,7 @@ namespace LiveKit
             //dest.UpdateExternalTexture(pointer);
             Debug.Log("Dest type? "+dest.graphicsFormat);
             Graphics.CopyTexture(Texture, dest);
-            AsyncGPUReadback.RequestIntoNativeArray(ref data, dest, 0, TextureFormat.ARGB32, OnReadback);
+            AsyncGPUReadback.RequestIntoNativeArray(ref _data, dest, 0, TextureFormat.ARGB32, OnReadback);
         }
 
         private bool _requestPending = false;
@@ -126,7 +126,7 @@ namespace LiveKit
                 var argbInfo = new ArgbBufferInfo(); // TODO: MindTrust_VID
                 unsafe
                 {
-                    argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(data);
+                    argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
                 }
 
                 argbInfo.Format = VideoFormatType.FormatArgb;
