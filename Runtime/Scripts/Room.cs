@@ -59,11 +59,12 @@ namespace LiveKit
         public ConnectInstruction Connect(string url, string authToken, CancellationToken cancelToken)
         {
             using var request = FFIBridge.Instance.NewRequest<ConnectRequest>();
+            using var roomOptions = request.TempResource<RoomOptions>();
             var connect = request.request;
             connect.Url = url;
-            connect.Token = authToken; 
-            connect.Options = new RoomOptions() { AutoSubscribe = true };
-
+            connect.Token = authToken;
+            connect.Options = roomOptions;
+            connect.Options.AutoSubscribe = true;
 
             Utils.Debug("Connect....");
             using var response = request.Send();

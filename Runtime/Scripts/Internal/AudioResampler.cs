@@ -21,15 +21,15 @@ namespace LiveKit
         public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate)
         {
             using var request = FFIBridge.Instance.NewRequest<RemixAndResampleRequest>();
+            using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
             var remix = request.request;
             remix.ResamplerHandle = (ulong)Handle.DangerousGetHandle();
-            //TODO pooling inner buffers
-            remix.Buffer = new AudioFrameBufferInfo() {
-                            DataPtr = (ulong)frame.Data,
-                            NumChannels = frame.NumChannels,
-                            SampleRate = frame.SampleRate,
-                            SamplesPerChannel = frame.SamplesPerChannel
-                        };
+
+            remix.Buffer = audioFrameBufferInfo;
+            remix.DataPtr = (ulong)frame.Data,
+            remix.NumChannels = frame.NumChannels,
+            remix.SampleRate = frame.SampleRate,
+            remix.amplesPerChannel = frame.SamplesPerChannel
 
 
 

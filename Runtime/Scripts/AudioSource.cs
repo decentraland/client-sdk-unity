@@ -114,17 +114,23 @@ namespace LiveKit
                         Array.Clear(_data, 0, _data.Length);
 
                         using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
+                        using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
+                        
                         var pushFrame = request.request;
                         pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
-                        pushFrame.Buffer = new AudioFrameBufferInfo
-                        {
-                            DataPtr = (ulong)_frame.Data,
-                            NumChannels = _frame.NumChannels,
-                            SampleRate = _frame.SampleRate,
-                            SamplesPerChannel = _frame.SamplesPerChannel
-                        };
-                        //Debug.Log($"Num Channels {_frame.NumChannels} Sample {_frame.SampleRate} and {_frame.SamplesPerChannel}");
+
+                        pushFrame.Buffer = audioFrameBufferInfo;
+                        pushFrame.Buffer.DataPtr = (ulong)_frame.Data;
+                        pushFrame.Buffer.NumChannels = _frame.NumChannels;
+                        pushFrame.Buffer.SampleRate = _frame.SampleRate;
+                        pushFrame.Buffer.SamplesPerChannel = _frame.SamplesPerChannel;
+
                         using var response = request.Send();
+
+                        pushFrame.Buffer.DataPtr = 0;
+                        pushFrame.Buffer.NumChannels = 0;
+                        pushFrame.Buffer.SampleRate = 0;
+                        pushFrame.Buffer.SamplesPerChannel = 0;
                     }
                 }
                 catch (Exception e)
