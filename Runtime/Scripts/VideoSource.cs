@@ -97,10 +97,11 @@ namespace LiveKit
             _reading = true;
             //Texture.graphicsFormat
             // try once then
-            Texture2D dest = new Texture2D(Texture.width, Texture.height, TextureFormat.RGBA32, false);
-            //dest.UpdateExternalTexture(pointer);
-            Debug.Log("Dest type? "+dest.graphicsFormat);
+            Texture2D dest = new Texture2D(Texture.width, Texture.height, TextureFormat.ARGB32, false);
+            ////dest.UpdateExternalTexture(pointer);
+            //Debug.Log("Dest type? "+dest.graphicsFormat);
             Graphics.CopyTexture(Texture, dest);
+            //Graphics.Blit
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, dest, 0, TextureFormat.ARGB32, OnReadback);
         }
 
