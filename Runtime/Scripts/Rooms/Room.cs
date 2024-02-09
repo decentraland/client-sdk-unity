@@ -113,16 +113,7 @@ namespace LiveKit.Rooms
 
         public void Disconnect()
         {
-            using var request = FFIBridge.Instance.NewRequest<DisconnectRequest>();
-            var disconnect = request.request;
-            disconnect.RoomHandle = (ulong)Handle.DangerousGetHandle();
-
-            Utils.Debug($"Disconnect.... {disconnect.RoomHandle}");
-            using var response = request.Send();
-            // ReSharper disable once RedundantAssignment
-            FfiResponse resp = response;
-            Utils.Debug($"Disconnect response.... {resp}");
-
+            FFIBridge.Instance.SendDisconnectRequest(this);
             ffiHandleFactory.Release(Handle);
         }
 
@@ -135,7 +126,6 @@ namespace LiveKit.Rooms
 
         private void OnEventReceived(RoomEvent e)
         {
-
             if (e.RoomHandle != (ulong)Handle.DangerousGetHandle())
             {
                 Utils.Debug("Ignoring. Different Room... " + e);
