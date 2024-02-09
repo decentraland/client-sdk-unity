@@ -3,20 +3,13 @@ using System.Threading.Tasks;
 using LiveKit.Rooms.ActiveSpeakers;
 using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Participants;
+using LiveKit.Rooms.Tracks.Hub;
 
 namespace LiveKit.Rooms
 {
-    public interface IRoom
+    public interface IRoom : ITracksHub
     {
         event Room.MetaDelegate? RoomMetadataChanged;
-        event Room.LocalPublishDelegate? LocalTrackPublished;
-        event Room.LocalPublishDelegate? LocalTrackUnpublished;
-        event Room.PublishDelegate? TrackPublished;
-        event Room.PublishDelegate? TrackUnpublished;
-        event Room.SubscribeDelegate? TrackSubscribed;
-        event Room.SubscribeDelegate? TrackUnsubscribed;
-        event Room.MuteDelegate? TrackMuted;
-        event Room.MuteDelegate? TrackUnmuted;
         event Room.ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         event Room.ConnectionStateChangeDelegate? ConnectionStateChanged;
         event Room.ConnectionDelegate? ConnectionUpdated;

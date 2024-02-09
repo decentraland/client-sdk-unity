@@ -16,6 +16,7 @@ using LiveKit.Rooms.Participants.Factory;
 using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.Tracks.Factory;
+using LiveKit.Rooms.Tracks.Hub;
 
 namespace LiveKit.Rooms
 {
@@ -23,10 +24,6 @@ namespace LiveKit.Rooms
     {
         public delegate void MetaDelegate(string metaData);
         public delegate void RemoteParticipantDelegate(Participant participant);
-        public delegate void LocalPublishDelegate(TrackPublication publication, Participant participant);
-        public delegate void PublishDelegate(TrackPublication publication, Participant participant);
-        public delegate void SubscribeDelegate(ITrack track, TrackPublication publication, Participant participant);
-        public delegate void MuteDelegate(TrackPublication publication, Participant participant);
         public delegate void SpeakersChangeDelegate(IReadOnlyCollection<string> speakers);
         public delegate void ConnectionQualityChangeDelegate(ConnectionQuality quality, Participant participant);
         public delegate void ConnectionStateChangeDelegate(ConnectionState connectionState);
