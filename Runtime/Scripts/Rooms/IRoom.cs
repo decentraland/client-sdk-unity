@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
+using System.Threading.Tasks;
 using LiveKit.Proto;
 using LiveKit.Rooms.AsyncInstractions;
+using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Participants;
 
 namespace LiveKit.Rooms
@@ -23,7 +26,6 @@ namespace LiveKit.Rooms
         event Room.MuteDelegate? TrackUnmuted;
         event Room.SpeakersChangeDelegate? ActiveSpeakersChanged;
         event Room.ConnectionQualityChangeDelegate? ConnectionQualityChanged;
-        event Room.DataDelegate? DataReceived;
         event Room.ConnectionStateChangeDelegate? ConnectionStateChanged;
         event Room.ConnectionDelegate? Connected;
         event Room.ConnectionDelegate? Disconnected;
@@ -32,10 +34,9 @@ namespace LiveKit.Rooms
         
         IParticipantsHub Participants { get; }
         
-        //TODO async
-        ConnectInstruction Connect(string url, string authToken, CancellationToken cancelToken);
+        IDataPipe DataPipe { get; }
         
-        void PublishData(Span<byte> data, string topic, IReadOnlyList<string> destinationSids, DataPacketKind kind = DataPacketKind.KindLossy);
+        Task<bool> Connect(string url, string authToken, CancellationToken cancelToken);
 
         void Disconnect();
     }

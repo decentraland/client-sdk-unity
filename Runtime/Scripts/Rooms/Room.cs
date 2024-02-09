@@ -5,10 +5,12 @@ using LiveKit.Internal;
 using LiveKit.Proto;
 using Google.Protobuf.Collections;
 using System.Threading;
+using System.Threading.Tasks;
 using LiveKit.Internal.FFIClients.Pools.Memory;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Rooms.ActiveSpeakers;
 using LiveKit.Rooms.AsyncInstractions;
+using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Participants.Factory;
 using LiveKit.Rooms.TrackPublications;
@@ -28,7 +30,6 @@ namespace LiveKit.Rooms
         public delegate void MuteDelegate(TrackPublication publication, Participant participant);
         public delegate void SpeakersChangeDelegate(IReadOnlyCollection<string> speakers);
         public delegate void ConnectionQualityChangeDelegate(ConnectionQuality quality, Participant participant);
-        public delegate void DataDelegate(ReadOnlySpan<byte> data, Participant participant, DataPacketKind kind);
         public delegate void ConnectionStateChangeDelegate(ConnectionState connectionState);
         public delegate void ConnectionDelegate(Room room);
 
@@ -54,7 +55,6 @@ namespace LiveKit.Rooms
         public event MuteDelegate? TrackUnmuted;
         public event SpeakersChangeDelegate? ActiveSpeakersChanged;
         public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
-        public event DataDelegate? DataReceived;
         public event ConnectionStateChangeDelegate? ConnectionStateChanged;
         public event ConnectionDelegate? Connected;
         public event ConnectionDelegate? Disconnected;
@@ -64,6 +64,9 @@ namespace LiveKit.Rooms
         public IActiveSpeakers ActiveSpeakers => activeSpeakers;
 
         public IParticipantsHub Participants => participantsHub;
+
+        public IDataPipe DataPipe => dataPipe;
+        
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
         private readonly IMutableParticipantsHub participantsHub;
@@ -71,6 +74,7 @@ namespace LiveKit.Rooms
         private readonly IFfiHandleFactory ffiHandleFactory;
         private readonly IParticipantFactory participantFactory;
         private readonly ITrackPublicationFactory trackPublicationFactory;
+        private readonly IMutableDataPipe dataPipe;
 
         public Room() : this(
             new ArrayMemoryPool(ArrayPool<byte>.Shared!),
@@ -79,12 +83,13 @@ namespace LiveKit.Rooms
             new TracksFactory(), 
             IFfiHandleFactory.Default, 
             IParticipantFactory.Default, 
-            ITrackPublicationFactory.Default
+            ITrackPublicationFactory.Default, 
+            new DataPipe()
         )
         {
         }
 
-        public Room(IMemoryPool memoryPool, IMutableActiveSpeakers activeSpeakers, IMutableParticipantsHub participantsHub, ITracksFactory tracksFactory, IFfiHandleFactory ffiHandleFactory, IParticipantFactory participantFactory, ITrackPublicationFactory trackPublicationFactory)
+        public Room(IMemoryPool memoryPool, IMutableActiveSpeakers activeSpeakers, IMutableParticipantsHub participantsHub, ITracksFactory tracksFactory, IFfiHandleFactory ffiHandleFactory, IParticipantFactory participantFactory, ITrackPublicationFactory trackPublicationFactory, IMutableDataPipe dataPipe)
         {
             this.memoryPool = memoryPool;
             this.activeSpeakers = activeSpeakers;
@@ -93,9 +98,11 @@ namespace LiveKit.Rooms
             this.ffiHandleFactory = ffiHandleFactory;
             this.participantFactory = participantFactory;
             this.trackPublicationFactory = trackPublicationFactory;
+            this.dataPipe = dataPipe;
+            dataPipe.Assign(participantsHub);
         }
 
-        public ConnectInstruction Connect(string url, string authToken, CancellationToken cancelToken)
+        public async Task<bool> Connect(string url, string authToken, CancellationToken cancelToken)
         {
             using var request = FFIBridge.Instance.NewRequest<ConnectRequest>();
             using var roomOptions = request.TempResource<RoomOptions>();
@@ -109,33 +116,10 @@ namespace LiveKit.Rooms
             using var response = request.Send();
             FfiResponse res = response;
             Utils.Debug($"Connect response.... {response}");
-            return new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken);
-        }
-        
-        public void PublishData(Span<byte> data, string topic, IReadOnlyList<string> sids, DataPacketKind kind = DataPacketKind.KindLossy)
-        {
-            unsafe
-            {
-                fixed (byte* pointer = data)
-                {
-                    PublishData(pointer, data.Length, topic, sids, kind);
-                }   
-            }
-        }
-        
-        private unsafe void PublishData(byte* data, int len, string topic, IReadOnlyList<string> sids, DataPacketKind kind = DataPacketKind.KindLossy)
-        {
-            using var request = FFIBridge.Instance.NewRequest<PublishDataRequest>();
-            var dataRequest = request.request;
-            dataRequest.DestinationSids.Clear();
-            dataRequest.DestinationSids.AddRange(sids);
-            dataRequest.DataLen = (ulong)len;
-            dataRequest.DataPtr = (ulong)data;
-            dataRequest.Kind = kind;
-            dataRequest.Topic = topic;
-            dataRequest.LocalParticipantHandle = (ulong)Participants.LocalParticipant().Handle.DangerousGetHandle();
-            Utils.Debug("Sending message: " + topic);
-            using var response = request.Send();
+            
+            var connectInstruction = new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken);
+            await connectInstruction.AwaitCompletion();
+            return connectInstruction.IsError == false;
         }
 
         public void Disconnect()
@@ -301,7 +285,7 @@ namespace LiveKit.Rooms
                         var dataInfo = e.DataReceived!.Data!;
                         using var memory = dataInfo.ReadAndDispose(memoryPool);
                         var participant = this.ParticipantEnsured(e.DataReceived.ParticipantSid!);
-                        DataReceived?.Invoke(memory.Span(), participant, e.DataReceived.Kind);
+                        dataPipe.Notify(memory.Span(), participant, e.DataReceived.Kind);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.ConnectionStateChanged:
