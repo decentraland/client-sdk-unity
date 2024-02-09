@@ -22,10 +22,7 @@ namespace LiveKit.Rooms
         event Room.MuteDelegate? TrackUnmuted;
         event Room.ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         event Room.ConnectionStateChangeDelegate? ConnectionStateChanged;
-        event Room.ConnectionDelegate? Connected;
-        event Room.ConnectionDelegate? Disconnected;
-        event Room.ConnectionDelegate? Reconnecting;
-        event Room.ConnectionDelegate? Reconnected;
+        event Room.ConnectionDelegate? ConnectionUpdated;
         
         IActiveSpeakers ActiveSpeakers { get; }
         

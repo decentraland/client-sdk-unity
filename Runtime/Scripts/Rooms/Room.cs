@@ -31,7 +31,15 @@ namespace LiveKit.Rooms
         public delegate void SpeakersChangeDelegate(IReadOnlyCollection<string> speakers);
         public delegate void ConnectionQualityChangeDelegate(ConnectionQuality quality, Participant participant);
         public delegate void ConnectionStateChangeDelegate(ConnectionState connectionState);
-        public delegate void ConnectionDelegate(Room room);
+        public delegate void ConnectionDelegate(Room room, ConnectionUpdate connectionUpdate);
+
+        public enum ConnectionUpdate
+        { 
+            Connected, 
+            Disconnected, 
+            Reconnecting, 
+            Reconnected
+        }
 
         // ReSharper disable once UnusedAutoPropertyAccessor.Global
         public string Sid { get; private set; } = string.Empty;
@@ -56,10 +64,7 @@ namespace LiveKit.Rooms
         public event SpeakersChangeDelegate? ActiveSpeakersChanged;
         public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         public event ConnectionStateChangeDelegate? ConnectionStateChanged;
-        public event ConnectionDelegate? Connected;
-        public event ConnectionDelegate? Disconnected;
-        public event ConnectionDelegate? Reconnecting;
-        public event ConnectionDelegate? Reconnected;
+        public event ConnectionDelegate? ConnectionUpdated;
 
         public IActiveSpeakers ActiveSpeakers => activeSpeakers;
 
@@ -284,14 +289,14 @@ namespace LiveKit.Rooms
                     break;*/
                 case RoomEvent.MessageOneofCase.Eos:
                 case RoomEvent.MessageOneofCase.Disconnected:
-                    Disconnected?.Invoke(this);
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected);
                     OnDisconnect();
                     break;
                 case RoomEvent.MessageOneofCase.Reconnecting:
-                    Reconnecting?.Invoke(this);
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting);
                     break;
                 case RoomEvent.MessageOneofCase.Reconnected:
-                    Reconnected?.Invoke(this);
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnected);
                     break;
                 case RoomEvent.MessageOneofCase.None:
                     //ignore
@@ -338,7 +343,7 @@ namespace LiveKit.Rooms
 
             FfiClient.Instance.RoomEventReceived += OnEventReceived;
             FfiClient.Instance.DisconnectReceived += OnDisconnectReceived;
-            Connected?.Invoke(this);
+            ConnectionUpdated?.Invoke(this, ConnectionUpdate.Connected);
         }
 
         private void OnDisconnectReceived(DisconnectCallback e)
