@@ -102,16 +102,12 @@ namespace LiveKit.Rooms
             dataPipe.Assign(participantsHub);
         }
 
-        public async Task<bool> Connect(string url, string authToken, CancellationToken cancelToken)
+        public Task<bool> Connect(string url, string authToken, CancellationToken cancelToken)
         {
-            Utils.Debug("Connect....");
             using var response = FFIBridge.Instance.SendConnectRequest(url, authToken);
             FfiResponse res = response;
-            Utils.Debug($"Connect response.... {response}");
-            
-            var connectInstruction = new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken);
-            await connectInstruction.AwaitCompletion();
-            return connectInstruction.IsError == false;
+            return new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken)
+                .AwaitWithSuccess();
         }
 
         public void Disconnect()
