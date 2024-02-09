@@ -1,10 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
-using LiveKit.Proto;
-using LiveKit.Rooms.AsyncInstractions;
+using LiveKit.Rooms.ActiveSpeakers;
 using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Participants;
 
@@ -24,13 +20,14 @@ namespace LiveKit.Rooms
         event Room.SubscribeDelegate? TrackUnsubscribed;
         event Room.MuteDelegate? TrackMuted;
         event Room.MuteDelegate? TrackUnmuted;
-        event Room.SpeakersChangeDelegate? ActiveSpeakersChanged;
         event Room.ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         event Room.ConnectionStateChangeDelegate? ConnectionStateChanged;
         event Room.ConnectionDelegate? Connected;
         event Room.ConnectionDelegate? Disconnected;
         event Room.ConnectionDelegate? Reconnecting;
         event Room.ConnectionDelegate? Reconnected;
+        
+        IActiveSpeakers ActiveSpeakers { get; }
         
         IParticipantsHub Participants { get; }
         
