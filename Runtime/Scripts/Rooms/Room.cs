@@ -24,18 +24,6 @@ namespace LiveKit.Rooms
     {
         public delegate void MetaDelegate(string metaData);
         public delegate void RemoteParticipantDelegate(Participant participant);
-        public delegate void SpeakersChangeDelegate(IReadOnlyCollection<string> speakers);
-        public delegate void ConnectionQualityChangeDelegate(ConnectionQuality quality, Participant participant);
-        public delegate void ConnectionStateChangeDelegate(ConnectionState connectionState);
-        public delegate void ConnectionDelegate(Room room, ConnectionUpdate connectionUpdate);
-
-        public enum ConnectionUpdate
-        { 
-            Connected, 
-            Disconnected, 
-            Reconnecting, 
-            Reconnected
-        }
 
         // ReSharper disable once UnusedAutoPropertyAccessor.Global
         public string Sid { get; private set; } = string.Empty;
@@ -54,7 +42,6 @@ namespace LiveKit.Rooms
         public event SubscribeDelegate? TrackUnsubscribed;
         public event MuteDelegate? TrackMuted;
         public event MuteDelegate? TrackUnmuted;
-        public event SpeakersChangeDelegate? ActiveSpeakersChanged;
         public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         public event ConnectionStateChangeDelegate? ConnectionStateChanged;
         public event ConnectionDelegate? ConnectionUpdated;
@@ -246,7 +233,6 @@ namespace LiveKit.Rooms
                 case RoomEvent.MessageOneofCase.ActiveSpeakersChanged:
                     {
                         activeSpeakers.UpdateCurrentActives(e.ActiveSpeakersChanged!.ParticipantSids!);
-                        ActiveSpeakersChanged?.Invoke(activeSpeakers);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.ConnectionQualityChanged:

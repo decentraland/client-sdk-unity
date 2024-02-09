@@ -7,12 +7,9 @@ using LiveKit.Rooms.Tracks.Hub;
 
 namespace LiveKit.Rooms
 {
-    public interface IRoom : ITracksHub
+    public interface IRoom : ITracksHub, IRoomConnectionInfo
     {
         event Room.MetaDelegate? RoomMetadataChanged;
-        event Room.ConnectionQualityChangeDelegate? ConnectionQualityChanged;
-        event Room.ConnectionStateChangeDelegate? ConnectionStateChanged;
-        event Room.ConnectionDelegate? ConnectionUpdated;
         
         IActiveSpeakers ActiveSpeakers { get; }
         
