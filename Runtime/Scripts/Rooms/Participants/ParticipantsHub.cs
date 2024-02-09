@@ -7,6 +7,8 @@ namespace LiveKit.Rooms.Participants
         private Participant? local;
         private readonly Dictionary<string, Participant> remoteParticipants = new();
 
+        public event ParticipantDelegate? UpdatesFromParticipant;
+
         public Participant LocalParticipant()
         {
             return local
@@ -39,6 +41,11 @@ namespace LiveKit.Rooms.Participants
         public void RemoveRemote(Participant participant)
         {
             remoteParticipants.Remove(participant.Sid);
+        }
+
+        public void NotifyParticipantUpdate(Participant participant, UpdateFromParticipant update)
+        {
+            UpdatesFromParticipant?.Invoke(participant, update);
         }
     }
 }

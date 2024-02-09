@@ -22,7 +22,6 @@ namespace LiveKit.Rooms
     public class Room : IRoom
     {
         public delegate void MetaDelegate(string metaData);
-        public delegate void ParticipantDelegate(Participant participant);
         public delegate void RemoteParticipantDelegate(Participant participant);
         public delegate void LocalPublishDelegate(TrackPublication publication, Participant participant);
         public delegate void PublishDelegate(TrackPublication publication, Participant participant);
@@ -50,9 +49,6 @@ namespace LiveKit.Rooms
         internal FfiHandle Handle { get; private set; } = null!;
 
         public event MetaDelegate? RoomMetadataChanged;
-        public event ParticipantDelegate? ParticipantConnected;
-        public event ParticipantDelegate? ParticipantMetadataChanged;
-        public event ParticipantDelegate? ParticipantDisconnected;
         public event LocalPublishDelegate? LocalTrackPublished;
         public event LocalPublishDelegate? LocalTrackUnpublished;
         public event PublishDelegate? TrackPublished;
@@ -158,7 +154,7 @@ namespace LiveKit.Rooms
                     {
                         var participant = this.ParticipantEnsured(e.ParticipantNameChanged!.ParticipantSid!);
                         participant.UpdateMeta(e.ParticipantMetadataChanged!.Metadata!);
-                        ParticipantMetadataChanged?.Invoke(participant);
+                        participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.MetadataChanged);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.ParticipantConnected:
@@ -171,7 +167,7 @@ namespace LiveKit.Rooms
                         )
                     );
                     participantsHub.AddRemote(participant);
-                    ParticipantConnected?.Invoke(participant);
+                    participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.Connected);
                 }
                     break;
                 case RoomEvent.MessageOneofCase.ParticipantDisconnected:
@@ -179,7 +175,7 @@ namespace LiveKit.Rooms
                         var info = e.ParticipantDisconnected!;
                         var participant = participantsHub.RemoteParticipantEnsured(info.ParticipantSid!);
                         participantsHub.RemoveRemote(participant);
-                        ParticipantDisconnected?.Invoke(participant);
+                        participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.Disconnected);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.LocalTrackUnpublished:

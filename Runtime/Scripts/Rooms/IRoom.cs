@@ -9,9 +9,6 @@ namespace LiveKit.Rooms
     public interface IRoom
     {
         event Room.MetaDelegate? RoomMetadataChanged;
-        event Room.ParticipantDelegate? ParticipantConnected;
-        event Room.ParticipantDelegate? ParticipantMetadataChanged;
-        event Room.ParticipantDelegate? ParticipantDisconnected;
         event Room.LocalPublishDelegate? LocalTrackPublished;
         event Room.LocalPublishDelegate? LocalTrackUnpublished;
         event Room.PublishDelegate? TrackPublished;
