@@ -21,6 +21,11 @@ namespace LiveKit.Rooms.Participants
             return remoteParticipant;
         }
 
+        public IReadOnlyCollection<string> RemoteParticipantSids()
+        {
+            return remoteParticipants.Keys;
+        }
+
         public void AssignLocal(Participant participant)
         {
             local = participant;

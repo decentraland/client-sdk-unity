@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LiveKit.Rooms.Participants
 {
     public interface IParticipantsHub
@@ -5,6 +7,8 @@ namespace LiveKit.Rooms.Participants
         Participant LocalParticipant();
 
         Participant? RemoteParticipant(string sid);
+        
+        IReadOnlyCollection<string> RemoteParticipantSids();
     }
 
     public interface IMutableParticipantsHub : IParticipantsHub
