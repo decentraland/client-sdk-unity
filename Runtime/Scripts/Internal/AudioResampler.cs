@@ -26,10 +26,10 @@ namespace LiveKit
             remix.ResamplerHandle = (ulong)Handle.DangerousGetHandle();
 
             remix.Buffer = audioFrameBufferInfo;
-            remix.DataPtr = (ulong)frame.Data,
-            remix.NumChannels = frame.NumChannels,
-            remix.SampleRate = frame.SampleRate,
-            remix.amplesPerChannel = frame.SamplesPerChannel
+            remix.Buffer.DataPtr = (ulong)frame.Data;
+            remix.Buffer.NumChannels = frame.NumChannels;
+            remix.Buffer.SampleRate = frame.SampleRate;
+            remix.Buffer.SamplesPerChannel = frame.SamplesPerChannel;
 
 
 
