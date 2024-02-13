@@ -189,6 +189,8 @@ namespace LiveKit.Internal
                     Utils.Debug("Callback: " + r?.MessageCase);
                 switch (r?.MessageCase)
                 {
+                    case FfiEvent.MessageOneofCase.Logs:
+                        break;
                     case FfiEvent.MessageOneofCase.PublishData:
                         break;
                     case FfiEvent.MessageOneofCase.Connect:

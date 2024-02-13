@@ -12,13 +12,19 @@ namespace LiveKit
 {
     public abstract class RtcVideoSource
     {
-        internal FfiHandle Handle { get; }
+        public enum VideoStreamSource
+        {
+            WebCamera = 0,
+            Screen = 1
+        }
 
+        internal FfiHandle Handle { get; }
+        protected VideoStreamSource _sourceType;
         protected VideoSourceInfo _info;
 
-
-        public RtcVideoSource()
+        public RtcVideoSource(VideoStreamSource sourceType)
         {
+            _sourceType = sourceType;
             using var request = FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
             var newVideoSource = request.request;
             newVideoSource.Type = VideoSourceType.VideoSourceNative;
@@ -31,6 +37,7 @@ namespace LiveKit
 
     public class TextureVideoSource : RtcVideoSource
     {
+        protected Texture _dest;
         public Texture Texture { get; }
         private NativeArray<byte> _data;
         private bool _reading = false;
@@ -38,10 +45,33 @@ namespace LiveKit
         //private Thread? readVideoThread;
         private bool _playing = false;
 
-        public TextureVideoSource(Texture texture)
+        public int GetWidth()
+        {
+            switch(_sourceType)
+            {
+                case VideoStreamSource.Screen:
+                    return Screen.width;
+                default:
+                    return Texture.width;
+            }
+        }
+
+        public int GetHeight()
+        {
+            switch (_sourceType)
+            {
+                case VideoStreamSource.Screen:
+                    return Screen.height;
+                default:
+                    return Texture.height;
+            }
+
+        }
+
+        public TextureVideoSource(VideoStreamSource sourceType, Texture texture) : base(sourceType)
         {
             Texture = texture;
-            _data = new NativeArray<byte>(Texture.width * Texture.height * 4, Allocator.Persistent);
+            _data = new NativeArray<byte>(GetWidth()* GetHeight() * 4, Allocator.Persistent);
             isDisposed = false;
         }
 
@@ -56,7 +86,7 @@ namespace LiveKit
         public void Stop()
         {
             _playing = false;
-               //readVideoThread?.Abort();
+            //readVideoThread?.Abort();
         }
 
         ~TextureVideoSource()
@@ -75,7 +105,7 @@ namespace LiveKit
             //while (true)
             //{
             //    Thread.Sleep(Constants.TASK_DELAY);
-            if (_playing && count%300==0)
+            if (_playing && count % 80 == 0)
             {
                 ReadBuffer();
                 ReadBack();
@@ -89,20 +119,29 @@ namespace LiveKit
             if (_reading)
                 return;
 
-            Debug.Log("Request into native array "+Texture.graphicsFormat);
-
-            IntPtr pointer = Texture.GetNativeTexturePtr();
-          
-
             _reading = true;
-            //Texture.graphicsFormat
-            // try once then
-            Texture2D dest = new Texture2D(Texture.width, Texture.height, TextureFormat.ARGB32, false);
-            ////dest.UpdateExternalTexture(pointer);
-            //Debug.Log("Dest type? "+dest.graphicsFormat);
-            Graphics.CopyTexture(Texture, dest);
-            //Graphics.Blit
-            AsyncGPUReadback.RequestIntoNativeArray(ref _data, dest, 0, TextureFormat.ARGB32, OnReadback);
+            switch (_sourceType) // todo: to different files?
+            {
+                case VideoStreamSource.Screen:
+                    if (_dest == null) _dest = new RenderTexture(Screen.width, Screen.height, 0);
+                    ScreenCapture.CaptureScreenshotIntoRenderTexture(_dest as RenderTexture);
+                    break;
+                default:
+                    if ((int)Texture.graphicsFormat == 88)
+                    {
+                        Debug.Log("Copy into texture");
+                        if (_dest == null) _dest = new Texture2D(Texture.width, Texture.height, TextureFormat.ARGB32, false);
+                        Graphics.CopyTexture(Texture, _dest);
+                    }
+                    else
+                    {
+                        Debug.Log("Using original");
+                        _dest = Texture;
+                    }
+                    break;
+            }
+            IntPtr pointer = _dest.GetNativeTexturePtr();
+            AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, TextureFormat.ARGB32, OnReadback);
         }
 
         private bool _requestPending = false;
@@ -114,7 +153,7 @@ namespace LiveKit
                 _requestPending = true;
             } else
             {
-                Debug.Log("Read Back Failed: "+req.ToString());
+                Debug.Log("Read Back Failed: " + req.ToString());
                 _reading = false;
             }
         }
@@ -124,7 +163,7 @@ namespace LiveKit
             if (_requestPending && !isDisposed)
             {
                 // ToI420
-
+                //ToArgbRequest
                 using var requestToI420 = FFIBridge.Instance.NewRequest<ToI420Request>();
                 using var argbInfoWrap = requestToI420.TempResource<ArgbBufferInfo>();
 
@@ -135,9 +174,9 @@ namespace LiveKit
                 }
 
                 argbInfo.Format = VideoFormatType.FormatArgb;
-                argbInfo.Stride = (uint)Texture.width * 4;
-                argbInfo.Width = (uint)Texture.width;
-                argbInfo.Height = (uint)Texture.height;
+                argbInfo.Stride = (uint)GetWidth()* 4;
+                argbInfo.Width = (uint)GetWidth();
+                argbInfo.Height = (uint)GetHeight();
 
                 var toI420 = requestToI420.request;
                 toI420.FlipY = true;
@@ -152,7 +191,7 @@ namespace LiveKit
 
                 using var request = FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
                 using var frameInfoWrap = request.TempResource<VideoFrameInfo>();
-                
+
                 var frameInfo = frameInfoWrap.value;
                 frameInfo.Rotation = VideoRotation._0;
                 frameInfo.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
@@ -163,10 +202,21 @@ namespace LiveKit
                 capture.Frame = frameInfo;
                 Debug.Log("Sending Frame");
                 using var response = request.Send();
+
                 //FfiResponse captureFrameRes = response;
                 //captureFrameRes.CaptureVideoFrame.;
                 _reading = false;
                 _requestPending = false;
+                buffer.Handle.Dispose();
+                switch (_sourceType)
+                {
+                    case VideoStreamSource.Screen:
+                        var renderText = _dest as RenderTexture;
+                        renderText.Release();
+                        break;
+                }
+
+
             }
         }
 
