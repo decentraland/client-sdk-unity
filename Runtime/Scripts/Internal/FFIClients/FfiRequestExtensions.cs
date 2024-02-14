@@ -155,6 +155,7 @@ namespace LiveKit.Internal.FFIClients
             // list of messages is taken from: livekit-ffi/protocol/ffi.proto
             // https://github.com/livekit/rust-sdks/blob/cf34856e78892a639c4d3c1d6a27e9aba0a4a8ff/livekit-ffi/protocol/ffi.proto#L4
 
+            /* TODO: Remove comment here. 
             if (
                 response.Dispose != null
                 ||
@@ -196,8 +197,9 @@ namespace LiveKit.Internal.FFIClients
                 || response.E2Ee != null
             )
             {
-                throw new InvalidOperationException("Response is not cleared");
+                throw new InvalidOperationException("Response is not cleared: ");
             }
+            */
         }
     }
 }

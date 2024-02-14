@@ -7,6 +7,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Threading;
 using LiveKit.Internal.FFIClients.Requests;
+using UnityEngine.Experimental.Rendering;
+using UnityEngine.UI;
 
 namespace LiveKit
 {
@@ -44,6 +46,7 @@ namespace LiveKit
         private bool isDisposed = true;
         //private Thread? readVideoThread;
         private bool _playing = false;
+        private RawImage _debugRenderer;
 
         public int GetWidth()
         {
@@ -68,10 +71,13 @@ namespace LiveKit
 
         }
 
-        public TextureVideoSource(VideoStreamSource sourceType, Texture texture) : base(sourceType)
+        public TextureVideoSource(VideoStreamSource sourceType, Texture texture, RawImage debugRenderer = null) : base(sourceType)
         {
+            _debugRenderer = debugRenderer;
+            //NativeLeakDetection.Mode = NativeLeakDetectionMode.Enabled;
             Texture = texture;
             _data = new NativeArray<byte>(GetWidth()* GetHeight() * 4, Allocator.Persistent);
+            Debug.LogError("Using: " + GetWidth() + " by " + GetHeight());
             isDisposed = false;
         }
 
@@ -105,7 +111,7 @@ namespace LiveKit
             //while (true)
             //{
             //    Thread.Sleep(Constants.TASK_DELAY);
-            if (_playing && count % 80 == 0)
+            if (_playing && count % 100 == 0)
             {
                 ReadBuffer();
                 ReadBack();
@@ -120,17 +126,31 @@ namespace LiveKit
                 return;
 
             _reading = true;
-            switch (_sourceType) // todo: to different files?
+            var gpuTextureFormat = TextureFormat.RGBA32;
+            switch (_sourceType) // todo: to different classes?
             {
                 case VideoStreamSource.Screen:
-                    if (_dest == null) _dest = new RenderTexture(Screen.width, Screen.height, 0);
+                    if (_dest == null) _dest = new RenderTexture(GetWidth(), GetHeight(), 0);
                     ScreenCapture.CaptureScreenshotIntoRenderTexture(_dest as RenderTexture);
+
+//                    var graphicDevice = SystemInfo.graphicsDeviceType;
+//                    var flipY = graphicDevice == GraphicsDeviceType.OpenGLCore ||
+//graphicDevice == GraphicsDeviceType.OpenGLES2 ||
+//graphicDevice == GraphicsDeviceType.OpenGLES3 ||
+//graphicDevice == GraphicsDeviceType.Vulkan ?
+//false :
+//true;
                     break;
                 default:
-                    if ((int)Texture.graphicsFormat == 88)
+                    if (!SystemInfo.IsFormatSupported(Texture.graphicsFormat, FormatUsage.ReadPixels))
                     {
                         Debug.Log("Copy into texture");
-                        if (_dest == null) _dest = new Texture2D(Texture.width, Texture.height, TextureFormat.ARGB32, false);
+                        if (_dest == null)
+                        {
+                            Debug.Log("Creating texture 2d");
+                            gpuTextureFormat = TextureFormat.RGBA32;
+                            _dest = new Texture2D(Texture.width, Texture.height, gpuTextureFormat, false);
+                        }
                         Graphics.CopyTexture(Texture, _dest);
                     }
                     else
@@ -141,7 +161,9 @@ namespace LiveKit
                     break;
             }
             IntPtr pointer = _dest.GetNativeTexturePtr();
-            AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, TextureFormat.ARGB32, OnReadback);
+            Debug.Log("What is " + _dest + " and " + _dest.graphicsFormat);
+           
+            AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, gpuTextureFormat, OnReadback);
         }
 
         private bool _requestPending = false;
@@ -165,15 +187,19 @@ namespace LiveKit
                 // ToI420
                 //ToArgbRequest
                 using var requestToI420 = FFIBridge.Instance.NewRequest<ToI420Request>();
+                //using var requestToArgb = FFIBridge.Instance.NewRequest<ToArgbRequest>();
                 using var argbInfoWrap = requestToI420.TempResource<ArgbBufferInfo>();
 
                 var argbInfo = argbInfoWrap.value;
+                //FfiHandle datahandle;
                 unsafe
                 {
                     argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
-                }
 
-                argbInfo.Format = VideoFormatType.FormatArgb;
+                   // datahandle = new FfiHandle((IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(_data));
+                }
+                
+                argbInfo.Format = VideoFormatType.FormatArgb; // note: format FormatRgba throws exception as not being supported
                 argbInfo.Stride = (uint)GetWidth()* 4;
                 argbInfo.Width = (uint)GetWidth();
                 argbInfo.Height = (uint)GetHeight();
@@ -186,6 +212,7 @@ namespace LiveKit
 
                 var bufferInfo = res.ToI420.Buffer;
                 var buffer = VideoFrameBuffer.Create(new FfiHandle((IntPtr)bufferInfo.Handle.Id), bufferInfo.Info);
+
 
                 // Send the frame to WebRTC
 
@@ -208,6 +235,7 @@ namespace LiveKit
                 _reading = false;
                 _requestPending = false;
                 buffer.Handle.Dispose();
+                //_data.Dispose();
                 switch (_sourceType)
                 {
                     case VideoStreamSource.Screen:
@@ -215,8 +243,6 @@ namespace LiveKit
                         renderText.Release();
                         break;
                 }
-
-
             }
         }
 

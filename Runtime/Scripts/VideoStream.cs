@@ -111,6 +111,11 @@ namespace LiveKit
             VideoBuffer = VideoBuffer.ToI420(); // TODO MindTrust-VID
             unsafe
             {
+            //       Texture2D result = new Texture2D(GetWidth(), GetHeight(), TextureFormat.RGBA32, false);
+            //result.LoadRawTextureData(req.GetData<uint>());
+            //result.Apply();
+            //_debugRenderer.texture = result;
+
                 var texPtr = NativeArrayUnsafeUtility.GetUnsafePtr(data);
                 VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)texPtr, (uint)Texture.width * 4, (uint)Texture.width,
                     (uint)Texture.height);
@@ -138,7 +143,7 @@ namespace LiveKit
                     var textureChanged = false;
                     if (Texture == null || Texture.width != rWidth || Texture.height != rHeight)
                     {
-                        Texture = new Texture2D((int)rWidth, (int)rHeight, TextureFormat.RGBA32, true, true);
+                        Texture = new Texture2D((int)rWidth, (int)rHeight, TextureFormat.ARGB32, true, true);
                         textureChanged = true;
                     }
 
