@@ -144,7 +144,7 @@ namespace LiveKit
                     var e = _pendingStreamEvents.Dequeue();
 
                     var info = e.FrameReceived.Frame.Info;
-                    Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
+                    //Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
                     var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
                     var frame = new AudioFrame(handle, info);
 

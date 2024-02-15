@@ -111,21 +111,23 @@ namespace LiveKit
             VideoBuffer = VideoBuffer.ToI420(); // TODO MindTrust-VID
             unsafe
             {
-            //       Texture2D result = new Texture2D(GetWidth(), GetHeight(), TextureFormat.RGBA32, false);
-            //result.LoadRawTextureData(req.GetData<uint>());
-            //result.Apply();
-            //_debugRenderer.texture = result;
+                //       Texture2D result = new Texture2D(GetWidth(), GetHeight(), TextureFormat.RGBA32, false);
+                //result.LoadRawTextureData(req.GetData<uint>());
+                //result.Apply();
+                //_debugRenderer.texture = result;
 
                 var texPtr = NativeArrayUnsafeUtility.GetUnsafePtr(data);
                 VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)texPtr, (uint)Texture.width * 4, (uint)Texture.width,
                     (uint)Texture.height);
             }
+            //Texture.LoadRawTextureData(data);
 
+            Debug.LogError("Apply new text");
             Texture.Apply();
         }
 
         public void Update()
-        {
+        { 
             if (!_playing || disposed) return;
             //while (!disposed)
             {

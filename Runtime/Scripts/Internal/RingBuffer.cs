@@ -14,7 +14,6 @@ namespace LiveKit.Internal
 
         public RingBuffer(int size)
         {
-            Debug.LogError("CREATING BUFFER OF SIZE: " + size);
             _buffer = new byte[size];
             _sameWrap = true;
         }
