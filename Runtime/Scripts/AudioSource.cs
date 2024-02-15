@@ -23,8 +23,8 @@ namespace LiveKit
         private Thread _readAudioThread;
         private object _lock = new object();
         private float[] _data;
-        private int _channels;
-        private int _sampleRate;
+        private uint _channels;
+        private uint _sampleRate;
         private volatile bool _pending = false;
 
         public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
@@ -89,7 +89,7 @@ namespace LiveKit
                     || _frame.SampleRate != _sampleRate
                     || _frame.SamplesPerChannel != samplesPerChannel)
                 {
-                    _frame = new AudioFrame(_sampleRate, _channels, samplesPerChannel);
+                    _frame = new AudioFrame(_sampleRate, _channels, (uint)samplesPerChannel);
                 }
 
                 try
@@ -151,8 +151,8 @@ namespace LiveKit
             lock (_lock)
             {
                 _data = data;
-                _channels = channels;
-                _sampleRate = sampleRate;
+                _channels = (uint)channels;
+                _sampleRate = (uint)sampleRate;
                 _pending = true;
             }
         }

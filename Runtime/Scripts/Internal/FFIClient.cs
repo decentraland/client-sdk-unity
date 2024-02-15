@@ -185,8 +185,8 @@ namespace LiveKit.Internal
             Instance._context?.Post((resp) =>
             {
                 var r = resp as FfiEvent;
-                if (r?.MessageCase != FfiEvent.MessageOneofCase.Logs)
-                    Utils.Debug("Callback: " + r?.MessageCase);
+                //if (r?.MessageCase != FfiEvent.MessageOneofCase.Logs)
+                //    Utils.Debug("Callback: " + r?.MessageCase);
                 switch (r?.MessageCase)
                 {
                     case FfiEvent.MessageOneofCase.Logs:

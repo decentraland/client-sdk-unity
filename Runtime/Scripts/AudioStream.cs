@@ -10,6 +10,11 @@ using System.Collections.Generic;
 
 namespace LiveKit
 {
+    //public class AudioFrameEvent
+    //{
+    //    internal AudioFrame frame;
+    //}
+
     public class AudioStream
     {
         //internal readonly FfiHandle Handle;
@@ -107,6 +112,7 @@ namespace LiveKit
                 var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
                 int read = _buffer.Read(temp);
                 Array.Clear(data, 0, data.Length);
+                Debug.LogError("Sending: " + data.Length);
                 for (int i = 0; i < data.Length; i++)
                 {
                     data[i] = S16ToFloat(_tempBuffer[i]);
@@ -144,9 +150,9 @@ namespace LiveKit
                     var e = _pendingStreamEvents.Dequeue();
 
                     var info = e.FrameReceived.Frame.Info;
-                    //Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
-                    var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
-                    var frame = new AudioFrame(handle, info);
+                    Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
+                    //var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
+                    var frame = new AudioFrame(info);
 
                     lock (_lock)
                     {

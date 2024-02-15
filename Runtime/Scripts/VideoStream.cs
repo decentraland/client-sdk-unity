@@ -8,9 +8,45 @@ using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit
 {
+    public sealed class VideoFrameEvent
+    {
+        private VideoFrame _frame;
+        internal VideoFrame Frame => _frame;
+        private long _timestamp;
+        internal long Timestamp => _timestamp;
+        private VideoRotation _rotation;
+        internal VideoRotation Rotation => _rotation;
+
+       
+
+        public VideoFrameEvent(VideoFrame frame, long timeStamp, VideoRotation rot)
+        {
+            _frame = frame;
+            _timestamp = timeStamp;
+            _rotation = rot;
+        }
+
+        public bool IsValid
+        {
+            get
+            {
+                if(_frame != null)
+                {
+                    return _frame.IsValid;
+                }
+                return false;
+            }
+        }
+
+        public void Dispose()
+        {
+            _frame?.Dispose();
+        }
+    }
+
     public class VideoStream
     {
-        public delegate void FrameReceiveDelegate(VideoFrame frame);
+        public delegate void FrameReceiveDelegate(VideoFrameEvent frameEvent);
 
 
         public delegate void TextureReceiveDelegate(Texture2D tex2d);
@@ -41,11 +77,11 @@ namespace LiveKit
         /// The texture changes every time the video resolution changes.
         /// Can be null if UpdateRoutine isn't started
         public Texture2D Texture { private set; get; }
-        public VideoFrameBuffer? VideoBuffer { get; private set; }
+        public VideoFrameEvent? VideoBuffer { get; private set; }
         
         private readonly object _lock = new();
 
-        public VideoStream(IVideoTrack videoTrack)
+        public VideoStream(IVideoTrack videoTrack, VideoBufferType format)
         {
             if (!videoTrack.Room.TryGetTarget(out var room))
                 throw new InvalidOperationException("videotrack's room is invalid");
@@ -57,8 +93,8 @@ namespace LiveKit
             using var request = FFIBridge.Instance.NewRequest<NewVideoStreamRequest>();
             var newVideoStream = request.request;
             newVideoStream.TrackHandle = (ulong)videoTrack.Handle.DangerousGetHandle();
-            //newVideoStream.ParticipantSid = participant.Sid;
-            //newVideoStream.TrackSid = videoTrack.Sid;
+            newVideoStream.Format = format;
+            newVideoStream.NormalizeStride = true;
             newVideoStream.Type = VideoStreamType.VideoStreamNative;
             using var response = request.Send();
             FfiResponse res = response;
@@ -105,58 +141,49 @@ namespace LiveKit
             }
         }
 
-        private void UploadBuffer()
-        {
-            var data = Texture.GetRawTextureData<byte>();
-            VideoBuffer = VideoBuffer.ToI420(); // TODO MindTrust-VID
-            unsafe
-            {
-                //       Texture2D result = new Texture2D(GetWidth(), GetHeight(), TextureFormat.RGBA32, false);
-                //result.LoadRawTextureData(req.GetData<uint>());
-                //result.Apply();
-                //_debugRenderer.texture = result;
-
-                var texPtr = NativeArrayUnsafeUtility.GetUnsafePtr(data);
-                VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)texPtr, (uint)Texture.width * 4, (uint)Texture.width,
-                    (uint)Texture.height);
-            }
-            //Texture.LoadRawTextureData(data);
-
-            Debug.LogError("Apply new text");
-            Texture.Apply();
-        }
 
         public void Update()
         { 
             if (!_playing || disposed) return;
-            //while (!disposed)
-            {
-                //Thread.Sleep(Constants.TASK_DELAY);
+            //{
 
-                lock (_lock)
-                {
-                    if (VideoBuffer == null || !VideoBuffer.IsValid || !_dirty)
-                        return;
+            //    lock (_lock)
+            //    {
+            //        if (VideoBuffer == null || !VideoBuffer.IsValid || !_dirty)
+            //            return;
 
-                    _dirty = false;
-                    var rWidth = VideoBuffer.Width;
-                    var rHeight = VideoBuffer.Height;
+            //        _dirty = false;
+            //        var rWidth = VideoBuffer.Frame.Width;
+            //        var rHeight = VideoBuffer.Frame.Height;
 
-                    var textureChanged = false;
-                    if (Texture == null || Texture.width != rWidth || Texture.height != rHeight)
-                    {
-                        Texture = new Texture2D((int)rWidth, (int)rHeight, TextureFormat.ARGB32, true, true);
-                        textureChanged = true;
-                    }
+            //        var textureChanged = false;
+            //        if (Texture == null || Texture.width != rWidth || Texture.height != rHeight)
+            //        {
+            //            Texture = new Texture2D((int)rWidth, (int)rHeight, TextureFormat.ARGB32, true, true);
+            //            textureChanged = true;
+            //        }
 
-                    UploadBuffer();
+            //        var textureData = Texture.GetRawTextureData<byte>();
+            //        unsafe
+            //        {
+            //            var destPtr = NativeArrayUnsafeUtility.GetUnsafePtr(textureData);
 
-                    if (textureChanged)
-                        TextureReceived?.Invoke(Texture);
+            //            //VideoBuffer.Frame.Info.DataPtr
 
-                    TextureUploaded?.Invoke();
-                }
-            }
+            //            //VideoBuffer.ToARGB(VideoFormatType.FormatAbgr, (IntPtr)destPtr, (uint)Texture.width * 4, (uint)Texture.width,
+            //            //    (uint)Texture.height);
+            //        }
+            //        //Texture.LoadRawTextureData(data);
+
+            //        Debug.LogError("Apply new text");
+            //        Texture.Apply();
+
+            //        if (textureChanged)
+            //            TextureReceived?.Invoke(Texture);
+
+            //        TextureUploaded?.Invoke();
+            //    }
+            //}
         }
 
         private void OnVideoStreamEvent(VideoStreamEvent e)
@@ -167,21 +194,24 @@ namespace LiveKit
             if (e.MessageCase != VideoStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
-            var frameInfo = e.FrameReceived.Frame;
+              
             var bufferInfo = e.FrameReceived.Buffer.Info;
             var handle = new FfiHandle((IntPtr)e.FrameReceived.Buffer.Handle.Id);
 
-            var frame = new VideoFrame(frameInfo);
-            var buffer = VideoFrameBuffer.Create(handle, bufferInfo);
+            var frame = VideoFrame.FromOwnedInfo(e.FrameReceived.Buffer);
+            var evt = new VideoFrameEvent(frame, e.FrameReceived.TimestampUs, e.FrameReceived.Rotation);
+            
+            
+            //var buffer = VideoFrameBuffer.Create(handle, bufferInfo);
 
             lock (_lock)
             {
-                VideoBuffer?.Dispose();
-                VideoBuffer = buffer;
+                VideoBuffer.Dispose();
+                VideoBuffer = evt;
                 _dirty = true;
             }
 
-            FrameReceived?.Invoke(frame);
+            FrameReceived?.Invoke(evt);
         }
     }
 }

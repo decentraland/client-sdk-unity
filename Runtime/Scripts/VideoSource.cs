@@ -184,57 +184,28 @@ namespace LiveKit
         {
             if (_requestPending && !isDisposed)
             {
-                // ToI420
-                //ToArgbRequest
-                using var requestToI420 = FFIBridge.Instance.NewRequest<ToI420Request>();
-                //using var requestToArgb = FFIBridge.Instance.NewRequest<ToArgbRequest>();
-                using var argbInfoWrap = requestToI420.TempResource<ArgbBufferInfo>();
-
-                var argbInfo = argbInfoWrap.value;
-                //FfiHandle datahandle;
+                var buffer = new VideoBufferInfo();
                 unsafe
                 {
-                    argbInfo.Ptr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
-
-                   // datahandle = new FfiHandle((IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(_data));
+                    buffer.DataPtr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
                 }
-                
-                argbInfo.Format = VideoFormatType.FormatArgb; // note: format FormatRgba throws exception as not being supported
-                argbInfo.Stride = (uint)GetWidth()* 4;
-                argbInfo.Width = (uint)GetWidth();
-                argbInfo.Height = (uint)GetHeight();
 
-                var toI420 = requestToI420.request;
-                toI420.FlipY = true;
-                toI420.Argb = argbInfo;
-                using var responseToI420 = requestToI420.Send();
-                FfiResponse res = responseToI420;
-
-                var bufferInfo = res.ToI420.Buffer;
-                var buffer = VideoFrameBuffer.Create(new FfiHandle((IntPtr)bufferInfo.Handle.Id), bufferInfo.Info);
-
-
+                buffer.Type = VideoBufferType.Rgba; 
+                buffer.Stride = (uint)GetWidth()* 4;
+                buffer.Width = (uint)GetWidth();
+                buffer.Height = (uint)GetHeight();
                 // Send the frame to WebRTC
-
                 using var request = FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
-                using var frameInfoWrap = request.TempResource<VideoFrameInfo>();
-
-                var frameInfo = frameInfoWrap.value;
-                frameInfo.Rotation = VideoRotation._0;
-                frameInfo.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-
                 var capture = request.request;
                 capture.SourceHandle = (ulong)Handle.DangerousGetHandle();
-                capture.Handle = (ulong)buffer.Handle.DangerousGetHandle();
-                capture.Frame = frameInfo;
+                capture.Rotation = VideoRotation._0;
+                capture.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                capture.Buffer = buffer;
                 Debug.Log("Sending Frame");
                 using var response = request.Send();
 
-                //FfiResponse captureFrameRes = response;
-                //captureFrameRes.CaptureVideoFrame.;
                 _reading = false;
                 _requestPending = false;
-                buffer.Handle.Dispose();
                 //_data.Dispose();
                 switch (_sourceType)
                 {
