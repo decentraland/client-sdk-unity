@@ -12,11 +12,10 @@ namespace LiveKit
         internal VideoBufferInfo Info => _info;
 
         private FfiHandle _handle;
-        internal FfiHandle Handle => _handle;
-        private uint _width;
-        internal uint Width => _width;
-        private uint _height;
-        internal uint Height => _height;
+        public FfiHandle Handle => _handle;
+        internal uint Width => _info.Width;
+        internal uint Height => _info.Height;
+        internal uint Stride => _info.Stride;
         private VideoBufferType _type;
         internal VideoBufferType Type => _type;
       
@@ -27,14 +26,20 @@ namespace LiveKit
         // Explicitly ask for FFIHandle 
         protected VideoFrame(FfiHandle handle, VideoBufferInfo info)
         {
+            _info = info;
             _handle = handle;
-            _width = info.Width;
-            _height = info.Height;
+            
             _type = info.Type;
             var memSize = GetMemorySize();
             if (memSize > 0)
                 GC.AddMemoryPressure(memSize);
         }
+
+
+     
+
+        
+
 
         ~VideoFrame()
         {
@@ -62,10 +67,9 @@ namespace LiveKit
         }
 
         /// Used for GC.AddMemoryPressure(Int64)
-        /// TODO(theomonnom): Remove the default implementation when each buffer type is implemented  cc MindTrust_VID
-        internal virtual long GetMemorySize()
+        public virtual long GetMemorySize()
         {
-            return -1;
+            return  Height * Stride;
         }
 
         /// VideoFrameBuffer takes ownership of the FFIHandle
@@ -77,7 +81,7 @@ namespace LiveKit
             return frame;
         }
 
-        public VideoFrame Convert(VideoBufferType type, bool flipY = false)
+        public VideoFrame Convert(VideoBufferType type, bool flipY )
         {
             using var request = FFIBridge.Instance.NewRequest<VideoConvertRequest>();
             var alloc = request.request;

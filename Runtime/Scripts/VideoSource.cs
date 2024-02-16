@@ -111,7 +111,7 @@ namespace LiveKit
             //while (true)
             //{
             //    Thread.Sleep(Constants.TASK_DELAY);
-            if (_playing && count % 100 == 0)
+            if (_playing/* && count % 100 == 0*/)
             {
                 ReadBuffer();
                 ReadBack();
