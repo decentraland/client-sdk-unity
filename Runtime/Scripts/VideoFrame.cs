@@ -3,6 +3,8 @@ using LiveKit.Internal;
 using LiveKit.Proto;
 using System.Runtime.CompilerServices;
 using LiveKit.Internal.FFIClients.Requests;
+using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace LiveKit
 {
@@ -72,22 +74,20 @@ namespace LiveKit
             return  Height * Stride;
         }
 
-        /// VideoFrameBuffer takes ownership of the FFIHandle
-        internal static VideoFrame FromOwnedInfo(OwnedVideoBuffer ownedInfo)
+        public static VideoFrame FromOwnedInfo(OwnedVideoBuffer ownedInfo)
         {
             var info = ownedInfo.Info;
-            //ownedInfo.Handle
             VideoFrame frame = new VideoFrame(new FfiHandle((IntPtr)info.DataPtr), info);
             return frame;
         }
 
-        public VideoFrame Convert(VideoBufferType type, bool flipY )
+        public static VideoFrame Convert(OwnedVideoBuffer ownedInfo, VideoBufferType type)
         {
             using var request = FFIBridge.Instance.NewRequest<VideoConvertRequest>();
             var alloc = request.request;
-            alloc.FlipY = flipY;
+            alloc.FlipY = GetFlip();
             alloc.DstType = type;
-            alloc.Buffer = Info;
+            alloc.Buffer = ownedInfo.Info;
             using var response = request.Send();
             FfiResponse res = response;
             if(res.VideoConvert.HasError)
@@ -96,7 +96,17 @@ namespace LiveKit
             }
             return FromOwnedInfo(res.VideoConvert.Buffer);
         }
- 
+
+       
+        protected static bool GetFlip()
+        {
+            var graphicDevice = SystemInfo.graphicsDeviceType;
+            return graphicDevice == GraphicsDeviceType.OpenGLCore ||
+            graphicDevice == GraphicsDeviceType.OpenGLES2 ||
+            graphicDevice == GraphicsDeviceType.OpenGLES3 ||
+            graphicDevice == GraphicsDeviceType.Vulkan ?
+            false :
+            true;
+        }
     }
-     
 }

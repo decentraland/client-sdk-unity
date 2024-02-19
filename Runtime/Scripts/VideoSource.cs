@@ -9,6 +9,7 @@ using System.Threading;
 using LiveKit.Internal.FFIClients.Requests;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.UI;
+using System.Threading.Tasks;
 
 namespace LiveKit
 {
@@ -22,11 +23,13 @@ namespace LiveKit
 
         internal FfiHandle Handle { get; }
         protected VideoStreamSource _sourceType;
+        protected VideoBufferType _bufferType;
         protected VideoSourceInfo _info;
 
-        public RtcVideoSource(VideoStreamSource sourceType)
+        public RtcVideoSource(VideoStreamSource sourceType, VideoBufferType bufferType)
         {
             _sourceType = sourceType;
+            _bufferType = bufferType;
             using var request = FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
             var newVideoSource = request.request;
             newVideoSource.Type = VideoSourceType.VideoSourceNative;
@@ -34,6 +37,31 @@ namespace LiveKit
             FfiResponse res = response;
             _info = res.NewVideoSource.Source.Info;
             Handle = new FfiHandle((IntPtr)res.NewVideoSource.Source.Handle.Id);
+        }
+
+        protected TextureFormat GetTextureFormat(VideoBufferType type)
+        {
+            switch (type)
+            {
+                case VideoBufferType.Rgba:
+                    return TextureFormat.RGBA32;
+                case VideoBufferType.Argb:
+                    return TextureFormat.ARGB32;
+                default:
+                    throw new NotImplementedException("TODO: Add TextureFormat support for type: " + type);
+            }
+        }
+
+        protected int GetStrideForBuffer(VideoBufferType type)
+        {
+            switch (type)
+            {
+                case VideoBufferType.Rgba:
+                case VideoBufferType.Argb:
+                    return 4;
+                default:
+                    throw new NotImplementedException("TODO: Add stride support for type: " + type);
+            }
         }
     }
 
@@ -44,13 +72,12 @@ namespace LiveKit
         private NativeArray<byte> _data;
         private bool _reading = false;
         private bool isDisposed = true;
-        //private Thread? readVideoThread;
+        //private Thread? sendThread;
         private bool _playing = false;
-        private RawImage _debugRenderer;
 
         public int GetWidth()
         {
-            switch(_sourceType)
+            switch (_sourceType)
             {
                 case VideoStreamSource.Screen:
                     return Screen.width;
@@ -68,16 +95,12 @@ namespace LiveKit
                 default:
                     return Texture.height;
             }
-
         }
 
-        public TextureVideoSource(VideoStreamSource sourceType, Texture texture, RawImage debugRenderer = null) : base(sourceType)
+        public TextureVideoSource(VideoStreamSource sourceType, Texture texture = null, VideoBufferType bufferType = VideoBufferType.Rgba) : base(sourceType, bufferType)
         {
-            _debugRenderer = debugRenderer;
-            //NativeLeakDetection.Mode = NativeLeakDetectionMode.Enabled;
             Texture = texture;
-            _data = new NativeArray<byte>(GetWidth()* GetHeight() * 4, Allocator.Persistent);
-            Debug.LogError("Using: " + GetWidth() + " by " + GetHeight());
+            _data = new NativeArray<byte>(GetWidth() * GetHeight() * GetStrideForBuffer(bufferType), Allocator.Persistent);
             isDisposed = false;
         }
 
@@ -85,84 +108,92 @@ namespace LiveKit
         {
             Stop();
             _playing = true;
-            //readVideoThread = new Thread(Update);
-            //readVideoThread.Start();
+            //sendThread = new Thread(SendFrameThread);
+            //sendThread.Start();
         }
 
         public void Stop()
         {
             _playing = false;
-            //readVideoThread?.Abort();
+            //sendThread?.Abort();
+            ClearRenderTexture();
         }
 
         ~TextureVideoSource()
         {
             if (!isDisposed)
             {
+                ClearRenderTexture();
                 _data.Dispose();
                 isDisposed = true;
             }
         }
 
-        int count;
+        private void ClearRenderTexture()
+        {
+            if (_dest)
+            {
+                switch (_sourceType)
+                {
+                    case VideoStreamSource.Screen:
+                        var renderText = _dest as RenderTexture;
+                        renderText.Release(); // can only be done on main thread
+                        break;
+                }
+            }
+        }
+
         public void Update()
         {
-            count++;
-            //while (true)
-            //{
-            //    Thread.Sleep(Constants.TASK_DELAY);
-            if (_playing/* && count % 100 == 0*/)
+            if (_playing)
             {
                 ReadBuffer();
-                ReadBack();
+                SendFrame();
             }
-            //}
         }
+
+        //protected void SendFrameThread()
+        //{
+        //    while (true)
+        //    {
+        //        Thread.Sleep(Constants.TASK_DELAY);
+        //        if (_playing)
+        //        {
+        //            SendFrame();
+        //        }
+        //    }
+        //}
 
         // Read the texture data into a native array asynchronously
         internal void ReadBuffer()
         {
             if (_reading)
                 return;
-
             _reading = true;
-            var gpuTextureFormat = TextureFormat.RGBA32;
-            switch (_sourceType) // todo: to different classes?
+            var gpuTextureFormat = GetTextureFormat(_bufferType); // currently is always this... may need to be dynamic for other platforms 
+            switch (_sourceType)
             {
                 case VideoStreamSource.Screen:
                     if (_dest == null) _dest = new RenderTexture(GetWidth(), GetHeight(), 0);
                     ScreenCapture.CaptureScreenshotIntoRenderTexture(_dest as RenderTexture);
-
-//                    var graphicDevice = SystemInfo.graphicsDeviceType;
-//                    var flipY = graphicDevice == GraphicsDeviceType.OpenGLCore ||
-//graphicDevice == GraphicsDeviceType.OpenGLES2 ||
-//graphicDevice == GraphicsDeviceType.OpenGLES3 ||
-//graphicDevice == GraphicsDeviceType.Vulkan ?
-//false :
-//true;
                     break;
                 default:
                     if (!SystemInfo.IsFormatSupported(Texture.graphicsFormat, FormatUsage.ReadPixels))
                     {
-                        Debug.Log("Copy into texture");
                         if (_dest == null)
                         {
-                            Debug.Log("Creating texture 2d");
-                            gpuTextureFormat = TextureFormat.RGBA32;
                             _dest = new Texture2D(Texture.width, Texture.height, gpuTextureFormat, false);
                         }
                         Graphics.CopyTexture(Texture, _dest);
                     }
                     else
                     {
-                        Debug.Log("Using original");
                         _dest = Texture;
                     }
                     break;
             }
             IntPtr pointer = _dest.GetNativeTexturePtr();
-            Debug.Log("What is " + _dest + " and " + _dest.graphicsFormat);
-           
+
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, gpuTextureFormat, OnReadback);
         }
 
@@ -173,14 +204,15 @@ namespace LiveKit
             if (!req.hasError)
             {
                 _requestPending = true;
-            } else
+            }
+            else
             {
-                Debug.Log("Read Back Failed: " + req.ToString());
+                Utils.Error("GPU Read Back on Video Source Failed: " + req.ToString());
                 _reading = false;
             }
         }
 
-        private void ReadBack()
+        private void SendFrame()
         {
             if (_requestPending && !isDisposed)
             {
@@ -190,10 +222,11 @@ namespace LiveKit
                     buffer.DataPtr = (ulong)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
                 }
 
-                buffer.Type = VideoBufferType.Rgba; 
-                buffer.Stride = (uint)GetWidth()* 4;
+                buffer.Type = _bufferType;
+                buffer.Stride = (uint)GetWidth() * (uint)GetStrideForBuffer(_bufferType);
                 buffer.Width = (uint)GetWidth();
                 buffer.Height = (uint)GetHeight();
+
                 // Send the frame to WebRTC
                 using var request = FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
                 var capture = request.request;
@@ -201,21 +234,13 @@ namespace LiveKit
                 capture.Rotation = VideoRotation._0;
                 capture.TimestampUs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                 capture.Buffer = buffer;
-                Debug.Log("Sending Frame");
                 using var response = request.Send();
-
                 _reading = false;
                 _requestPending = false;
-                //_data.Dispose();
-                switch (_sourceType)
-                {
-                    case VideoStreamSource.Screen:
-                        var renderText = _dest as RenderTexture;
-                        renderText.Release();
-                        break;
-                }
+                ClearRenderTexture();
             }
         }
 
     }
 }
+

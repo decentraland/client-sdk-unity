@@ -140,7 +140,7 @@ namespace LiveKit
             }
         }
 
-
+        // Needs to be on main thread
         public void Update()
         {
             if (!_playing || disposed) return;
@@ -163,7 +163,6 @@ namespace LiveKit
                 }
 
                 int size = (int)VideoBuffer.Frame.GetMemorySize();
-                //var mipSize = GraphicsFormatUtility.ComputeMipmapSize(Texture.width, Texture.height, Texture.graphicsFormat);
                 unsafe
                 {
                     Texture.LoadRawTextureData(VideoBuffer.Frame.Handle.DangerousGetHandle(), (int)size); 
@@ -186,6 +185,7 @@ namespace LiveKit
                 return;
               
             var bufferInfo = e.FrameReceived.Buffer.Info;
+
             var frame = VideoFrame.FromOwnedInfo(e.FrameReceived.Buffer);
             var evt = new VideoFrameEvent(frame, e.FrameReceived.TimestampUs, e.FrameReceived.Rotation);
 
