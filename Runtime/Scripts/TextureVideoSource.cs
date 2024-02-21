@@ -58,7 +58,6 @@ namespace LiveKit
             {
                 _dest = Texture;
             }
-            IntPtr pointer = _dest.GetNativeTexturePtr();
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, gpuTextureFormat, OnReadback);
         }
     }

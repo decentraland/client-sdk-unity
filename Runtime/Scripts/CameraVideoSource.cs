@@ -27,26 +27,12 @@ namespace LiveKit
             return Camera.pixelHeight;
         }
 
-        public CameraVideoSource(Camera camera, VideoBufferType bufferType = VideoBufferType.Rgba) : base(VideoStreamSource.Screen, bufferType)
+        public CameraVideoSource(Camera camera,   VideoBufferType bufferType = VideoBufferType.Rgba) : base(VideoStreamSource.Screen, bufferType)
         {
             Camera = camera;
-            Camera.onPostRender += OnCameraPostRender;
-            //camera.targetTexture = new RenderTexture(GetWidth(), GetHeight(), 0); ;
-            //_dest = camera.targetTexture;
-            //_data = new NativeArray<byte>(GetWidth() * GetHeight() * GetStrideForBuffer(bufferType), Allocator.Persistent);
-        }
-
-        private void OnCameraPostRender(Camera cam)
-        {
-            if(_playing)
-            {
-                if (_dest == null)
-                {
-                    _dest = new Texture2D(GetWidth(), GetHeight(),  TextureFormat.RGBA64, false);
-                }
-                Debug.Log(GetTextureFormat(_bufferType) +" vs "+cam.activeTexture.graphicsFormat);
-                Graphics.CopyTexture(cam.activeTexture, _dest);
-            }
+             _dest = new RenderTexture(GetWidth(), GetHeight(), 0); ;// camera.targetTexture;
+            camera.targetTexture = _dest as RenderTexture;
+            _data = new NativeArray<byte>(GetWidth() * GetHeight() * GetStrideForBuffer(bufferType), Allocator.Persistent);
         }
 
         ~CameraVideoSource()
@@ -76,8 +62,6 @@ namespace LiveKit
             if (_reading)
                 return;
             _reading = true;
-
-            IntPtr pointer = _dest.GetNativeTexturePtr();
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, GetTextureFormat(_bufferType), OnReadback);
         }
     }
