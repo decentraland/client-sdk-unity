@@ -130,7 +130,7 @@ namespace LiveKit.Internal
 
         public bool Initialized()
         {
-            return initialized; 
+            return initialized;
         }
 
         public void Dispose()

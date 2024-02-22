@@ -17,6 +17,7 @@ using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.Tracks.Factory;
 using LiveKit.Rooms.Tracks.Hub;
+using UnityEngine;
 
 namespace LiveKit.Rooms
 {
@@ -200,6 +201,7 @@ namespace LiveKit.Rooms
                         var publication = participant.TrackPublication(info.Sid!);
 
                         var track = tracksFactory.NewTrack(null, info, this, participant);
+                        Debug.LogError("Track Subscribed");
                         publication.UpdateTrack(track);
                         TrackSubscribed?.Invoke(track, publication, participant);
                     }

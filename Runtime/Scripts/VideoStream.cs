@@ -1,13 +1,12 @@
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
+using LiveKit.Rooms.Tracks;
 using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
-using LiveKit.Rooms;
-using LiveKit.Rooms.Tracks;
 
 namespace LiveKit
 {
@@ -84,11 +83,8 @@ namespace LiveKit
         
         private readonly object _lock = new();
 
-        public VideoStream(IVideoTrack videoTrack, VideoBufferType format)
+        public VideoStream(ITrack videoTrack, VideoBufferType format)
         {
-            if (videoTrack.Kind is not TrackKind.KindVideo)
-                throw new InvalidOperationException("videoTrack is not a video track");
-            
             if (!videoTrack.Room.TryGetTarget(out var room))
                 throw new InvalidOperationException("videotrack's room is invalid");
 
@@ -190,6 +186,7 @@ namespace LiveKit
                 return;
               
             var bufferInfo = e.FrameReceived.Buffer.Info;
+
             var frame = VideoFrame.FromOwnedInfo(e.FrameReceived.Buffer);
             var evt = new VideoFrameEvent(frame, e.FrameReceived.TimestampUs, e.FrameReceived.Rotation);
 

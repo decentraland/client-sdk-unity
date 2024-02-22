@@ -59,7 +59,6 @@ namespace LiveKit
             if (!_disposed)
             {
                 Handle.Dispose();
-                IFfiHandleFactory.Default.Release(Handle);
 
                 var memSize = GetMemorySize();
                 if (memSize > 0)
@@ -78,7 +77,7 @@ namespace LiveKit
         public static VideoFrame FromOwnedInfo(OwnedVideoBuffer ownedInfo)
         {
             var info = ownedInfo.Info;
-            VideoFrame frame = new VideoFrame(new FfiHandle((IntPtr)info.DataPtr), info);
+            VideoFrame frame = new VideoFrame(IFfiHandleFactory.Default.NewFfiHandle(info.DataPtr), info);
             return frame;
         }
 

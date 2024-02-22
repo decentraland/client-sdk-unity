@@ -1,6 +1,7 @@
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Tracks;
+using UnityEngine;
 
 namespace LiveKit.Rooms.TrackPublications
 {
@@ -59,6 +60,7 @@ namespace LiveKit.Rooms.TrackPublications
             using var request = FFIBridge.Instance.NewRequest<SetSubscribedRequest>();
             var setSubscribed = request.request;
             setSubscribed.Subscribe = subscribed;
+            Debug.Log("Track? " + Track);
             setSubscribed.PublicationHandle = (ulong)Track.Handle.DangerousGetHandle();
             using var response = request.Send();
         }
