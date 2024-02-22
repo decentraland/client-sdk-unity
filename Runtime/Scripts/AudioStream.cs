@@ -39,6 +39,9 @@ namespace LiveKit
 
         public AudioStream(ITrack audioTrack, AudioSource source)
         {
+            if (audioTrack.Kind is not TrackKind.KindAudio)
+                throw new InvalidOperationException("audioTrack is not an audio track");
+
             if (!audioTrack.Room.TryGetTarget(out var room))
                 throw new InvalidOperationException("audiotrack's room is invalid");
 
