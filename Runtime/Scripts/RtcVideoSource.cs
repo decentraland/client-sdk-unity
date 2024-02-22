@@ -47,7 +47,7 @@ namespace LiveKit
             using var response = request.Send();
             FfiResponse res = response;
             _info = res.NewVideoSource.Source.Info;
-            Handle = new FfiHandle((IntPtr)res.NewVideoSource.Source.Handle.Id);
+            Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewVideoSource.Source.Handle.Id);
         }
 
         protected TextureFormat GetTextureFormat(VideoBufferType type)
