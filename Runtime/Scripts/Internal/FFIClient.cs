@@ -19,11 +19,13 @@ namespace LiveKit.Internal
     #endif
     internal sealed class FfiClient : IFFIClient
     {
+        private static bool initialized = false;
         private static readonly Lazy<FfiClient> instance = new(() => new FfiClient());
-        public static FfiClient Instance => instance.Value;
-        private static bool _isDisposed;
 
-        internal SynchronizationContext? _context;
+        public static FfiClient Instance => instance.Value!;
+        private static bool _isDisposed;
+        
+        private SynchronizationContext? context;
 
         private readonly IObjectPool<FfiResponse> ffiResponsePool;
         private readonly MessageParser<FfiResponse> responseParser;
@@ -78,14 +80,14 @@ namespace LiveKit.Internal
 
         static void OnAfterAssemblyReload()
         {
-            Initialize();
+            InitializeSdk();
         }
 #else
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Init()
         {
             Application.quitting += Quit;
-            FfiClient.Initialize();
+            InitializeSdk();
         }
 #endif
 
@@ -103,11 +105,11 @@ namespace LiveKit.Internal
         static void GetMainContext()
         {
             // https://github.com/Unity-Technologies/UnityCsReference/blob/master/Runtime/Export/Scripting/UnitySynchronizationContext.cs
-            Instance._context = SynchronizationContext.Current;
+            Instance.context = SynchronizationContext.Current;
             Utils.Debug("Main Context created");
         }
 
-        static void Initialize()
+        private static void InitializeSdk()
         {
 #if LK_VERBOSE
             const bool captureLogs = true;
@@ -116,7 +118,19 @@ namespace LiveKit.Internal
 #endif
 
             NativeMethods.LiveKitInitialize(FFICallback, captureLogs);
-            Utils.Debug("FFIServer - Initialized. Capture Logs? "+captureLogs);
+
+            Utils.Debug("FFIServer - Initialized");
+            initialized = true;
+        }
+
+        public void Initialize()
+        {
+            InitializeSdk();
+        }
+
+        public bool Initialized()
+        {
+            return initialized; 
         }
 
         public void Dispose()
@@ -124,6 +138,7 @@ namespace LiveKit.Internal
             _isDisposed = true;
             // Stop all rooms synchronously
             // The rust lk implementation should also correctly dispose WebRTC
+            initialized = false;
             SendRequest(
                 new FfiRequest
                 {
@@ -173,16 +188,17 @@ namespace LiveKit.Internal
             }
         }
 
+        //TODO interface + memory optimisation
         [AOT.MonoPInvokeCallback(typeof(FFICallbackDelegate))]
         static unsafe void FFICallback(IntPtr data, int size)
         {
             if (_isDisposed) return;
-            var respData = new Span<byte>(data.ToPointer(), size);
-            var response = FfiEvent.Parser.ParseFrom(respData);
+            var respData = new Span<byte>(data.ToPointer()!, size);
+            var response = FfiEvent.Parser!.ParseFrom(respData);
 
             // Run on the main thread, the order of execution is guaranteed by Unity
             // It uses a Queue internally
-            Instance._context?.Post((resp) =>
+            Instance.context?.Post((resp) =>
             {
                 var r = resp as FfiEvent;
                 //if (r?.MessageCase != FfiEvent.MessageOneofCase.Logs)

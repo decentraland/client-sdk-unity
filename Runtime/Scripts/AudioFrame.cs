@@ -59,7 +59,7 @@ namespace LiveKit
         {
             if (!_disposed)
             {
-                //Marshal.FreeHGlobal(_dataPtr);
+            // todo: clean dataPtr or convert to handle
                 _disposed = true;
             }
         }

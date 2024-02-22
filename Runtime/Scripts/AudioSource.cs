@@ -12,9 +12,7 @@ namespace LiveKit
         private AudioSource _audioSource;
         private AudioFilter _audioFilter;
 
-        private FfiHandle _handle;
-
-        internal FfiHandle Handle => _handle;
+        internal FfiHandle Handle { get; }
 
         protected AudioSourceInfo _info;
 
@@ -29,8 +27,7 @@ namespace LiveKit
 
         public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
         {
-            try
-            {
+
                 using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
                 var newAudioSource = request.request;
                 newAudioSource.Type = AudioSourceType.AudioSourceNative;
@@ -40,13 +37,9 @@ namespace LiveKit
                 using var response = request.Send();
                 FfiResponse res = response;
                 _info = res.NewAudioSource.Source.Info;
-                //TODO pooling handles
-                _handle = new FfiHandle((IntPtr)res.NewAudioSource.Source.Handle.Id);
+                Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
                 UpdateSource(source, audioFilter);
-            } catch(Exception e)
-            {
-                Debug.LogException(e);
-            }
+
         }
 
         public void Start()

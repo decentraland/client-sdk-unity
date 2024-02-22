@@ -15,7 +15,7 @@ namespace LiveKit
             using var request = FFIBridge.Instance.NewRequest<NewAudioResamplerRequest>();
             using var response = request.Send();
             FfiResponse res = response;
-            Handle = new FfiHandle((IntPtr)res.NewAudioResampler.Resampler.Handle.Id);
+            Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioResampler!.Resampler!.Handle!.Id);
         }
 
         public AudioFrame RemixAndResample(AudioFrame frame, uint numChannels, uint sampleRate)
@@ -37,8 +37,7 @@ namespace LiveKit
             remix.SampleRate = sampleRate;
             using var response = request.Send();
             FfiResponse res = response;
-            var bufferInfo = res.RemixAndResample.Buffer;
-            //var handle = new FfiHandle((IntPtr)bufferInfo.Handle.Id);
+            var bufferInfo = res.RemixAndResample.Buffer; 
             return new AudioFrame(bufferInfo.Info);
         }
     }

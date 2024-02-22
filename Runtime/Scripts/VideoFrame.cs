@@ -59,6 +59,7 @@ namespace LiveKit
             if (!_disposed)
             {
                 Handle.Dispose();
+                IFfiHandleFactory.Default.Release(Handle);
 
                 var memSize = GetMemorySize();
                 if (memSize > 0)

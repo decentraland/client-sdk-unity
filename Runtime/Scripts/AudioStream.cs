@@ -3,10 +3,12 @@ using UnityEngine;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using System.Threading;
-using LiveKit.Internal.FFIClients.Requests;
+using LiveKit.Internal.FFIClients.Requests; 
 using System.Runtime.InteropServices;
 using System.Collections;
 using System.Collections.Generic;
+using LiveKit.Rooms;
+using LiveKit.Rooms.Tracks;
 
 namespace LiveKit
 {
@@ -17,15 +19,12 @@ namespace LiveKit
 
     public class AudioStream
     {
-        //internal readonly FfiHandle Handle;
+        internal FfiHandle Handle => _handle;
+
         private FfiHandle _handle;
-        internal FfiHandle Handle
-        {
-            get { return _handle; }
-        }
         private AudioSource _audioSource;
         private AudioFilter _audioFilter;
-        private RingBuffer _buffer;
+        private RingBuffer? _buffer;
         private short[] _tempBuffer;
         private uint _numChannels;
         private uint _sampleRate;
@@ -36,8 +35,11 @@ namespace LiveKit
         private Thread? _writeAudioThread;
         private bool _playing = false;
 
-        public AudioStream(IAudioTrack audioTrack, AudioSource source)
+        public AudioStream(ITrack audioTrack, AudioSource source)
         {
+            if (audioTrack.Kind is not TrackKind.KindAudio)
+                throw new InvalidOperationException("audioTrack is not an audio track");
+            
             if (!audioTrack.Room.TryGetTarget(out var room))
                 throw new InvalidOperationException("audiotrack's room is invalid");
 
@@ -51,9 +53,7 @@ namespace LiveKit
             using var response = request.Send();
             FfiResponse res = response;
             var streamInfo = res.NewAudioStream.Stream;
-
-            _handle = new FfiHandle((IntPtr)streamInfo.Handle.Id);
-
+            _handle = IFfiHandleFactory.Default.NewFfiHandle(streamInfo.Handle.Id);  
             UpdateSource(source);
         }
 
@@ -97,6 +97,7 @@ namespace LiveKit
                 if (_buffer == null || channels != _numChannels || sampleRate != _sampleRate || data.Length != _tempBuffer.Length)
                 {
                     int size = (int)(channels * sampleRate * .2f);
+                    _buffer?.Dispose();
                     _buffer = new RingBuffer(size * sizeof(short));
                     _tempBuffer = new short[data.Length];
                     _numChannels = (uint)channels;
@@ -148,12 +149,8 @@ namespace LiveKit
                 if (_pendingStreamEvents.Count > 0)
                 {
                     var e = _pendingStreamEvents.Dequeue();
-
                     var info = e.FrameReceived.Frame.Info;
-                    //Debug.Log("Write " + e.FrameReceived.Frame.Info.ToString() + " : " + e.FrameReceived.Frame.Info.SamplesPerChannel);
-                    //var handle = new FfiHandle((IntPtr)e.FrameReceived.Frame.Handle.Id);
                     var frame = new AudioFrame(info);
-
                     lock (_lock)
                     {
                         unsafe
