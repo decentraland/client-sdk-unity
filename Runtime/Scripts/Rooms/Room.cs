@@ -184,7 +184,6 @@ namespace LiveKit.Rooms
                         var publication = trackPublicationFactory.NewTrackPublication(e.TrackPublished.Publication!.Info!);
                         participant.Publish(publication);
                         TrackPublished?.Invoke(publication, participant);
-                        //publication.SetSubscribedForRemote(true);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.TrackUnpublished:
