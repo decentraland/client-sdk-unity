@@ -184,7 +184,7 @@ namespace LiveKit.Rooms
                         var publication = trackPublicationFactory.NewTrackPublication(e.TrackPublished.Publication!.Info!);
                         participant.Publish(publication);
                         TrackPublished?.Invoke(publication, participant);
-                        publication.SetSubscribedForRemote(true);
+                        //publication.SetSubscribedForRemote(true);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.TrackUnpublished:
@@ -199,8 +199,9 @@ namespace LiveKit.Rooms
                         var info = e.TrackSubscribed!.Track!.Info!;
                         var participant = participantsHub.RemoteParticipantEnsured(e.TrackSubscribed.ParticipantSid!);
                         var publication = participant.TrackPublication(info.Sid!);
+                        var trackHandle = ffiHandleFactory.NewFfiHandle((IntPtr)e.TrackSubscribed.Track.Handle.Id);
 
-                        var track = tracksFactory.NewTrack(null, info, this, participant);
+                        var track = tracksFactory.NewTrack(trackHandle, info, this, participant);
                         Debug.LogError("Track Subscribed");
                         publication.UpdateTrack(track);
                         TrackSubscribed?.Invoke(track, publication, participant);

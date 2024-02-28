@@ -14,7 +14,7 @@ namespace LiveKit.Internal.FFIClients.Requests
             connect.Url = url;
             connect.Token = authToken;
             connect.Options = roomOptions;
-            connect.Options.AutoSubscribe = false;
+            connect.Options.AutoSubscribe = true;
             var response = request.Send();
             Utils.Debug($"Connect response.... {response}");
             return response;

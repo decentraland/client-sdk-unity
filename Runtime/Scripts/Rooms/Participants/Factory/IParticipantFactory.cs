@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Rooms.TrackPublications;
+using UnityEngine;
 
 namespace LiveKit.Rooms.Participants.Factory
 {
@@ -26,12 +27,11 @@ namespace LiveKit.Rooms.Participants.Factory
         )
         {
             var participant = factory.NewParticipant(info, room, handle, Origin.Remote);
-            foreach (var pubInfo in publications ?? Array.Empty<OwnedTrackPublication>())
-            {
-                var publication = ITrackPublicationFactory.Default.NewTrackPublication(pubInfo.Info!);
-                participant.AddTrack(publication);
-                publication.SetSubscribedForRemote(true);
-            }
+                foreach (var pubInfo in publications ?? Array.Empty<OwnedTrackPublication>())
+                {
+                    var publication = ITrackPublicationFactory.Default.NewTrackPublication(pubInfo.Info!);
+                    participant.AddTrack(publication);
+                }
 
             return participant;
         }
