@@ -52,7 +52,9 @@ namespace LiveKit.Rooms
         public IParticipantsHub Participants => participantsHub;
 
         public IDataPipe DataPipe => dataPipe;
-        
+
+        public ITracksFactory TracksFactory => tracksFactory;
+
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
         private readonly IMutableParticipantsHub participantsHub;
@@ -88,9 +90,9 @@ namespace LiveKit.Rooms
             dataPipe.Assign(participantsHub);
         }
 
-        public Task<bool> Connect(string url, string authToken, CancellationToken cancelToken)
+        public Task<bool> Connect(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe)
         {
-            using var response = FFIBridge.Instance.SendConnectRequest(url, authToken);
+            using var response = FFIBridge.Instance.SendConnectRequest(url, authToken, autoSubscribe);
             FfiResponse res = response;
             return new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken)
                 .AwaitWithSuccess();
@@ -180,8 +182,16 @@ namespace LiveKit.Rooms
                     break;
                 case RoomEvent.MessageOneofCase.TrackPublished:
                     {
+                        Debug.LogError(e);
                         var participant = participantsHub.RemoteParticipantEnsured(e.TrackPublished!.ParticipantSid!);
                         var publication = trackPublicationFactory.NewTrackPublication(e.TrackPublished.Publication!.Info!);
+                        var trackHandle = ffiHandleFactory.NewFfiHandle((IntPtr)e.TrackPublished.Publication!.Handle.Id);
+
+                        var track = tracksFactory.NewTrack(trackHandle, null, this, participant);
+                        publication.UpdateTrack(track);
+                        Debug.LogError(" * ->  Track Published");
+                        Debug.LogError(publication);
+
                         participant.Publish(publication);
                         TrackPublished?.Invoke(publication, participant);
                     }
