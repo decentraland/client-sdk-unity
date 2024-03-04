@@ -64,9 +64,6 @@ namespace LiveKit
         private bool _playing = false;
         private volatile bool disposed = false;
 
-        // Thread for parsing textures
-        //private Thread? frameThread;
-
         /// Called when we receive a new frame from the VideoTrack
         public event FrameReceiveDelegate FrameReceived;
 

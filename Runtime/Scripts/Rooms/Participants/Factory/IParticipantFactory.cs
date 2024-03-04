@@ -29,7 +29,8 @@ namespace LiveKit.Rooms.Participants.Factory
             var participant = factory.NewParticipant(info, room, handle, Origin.Remote);
                 foreach (var pubInfo in publications ?? Array.Empty<OwnedTrackPublication>())
                 {
-                    var publication = ITrackPublicationFactory.Default.NewTrackPublication(pubInfo.Info!);
+              
+                    var publication = ITrackPublicationFactory.Default.NewTrackPublication(pubInfo.Handle, pubInfo.Info!);
                     participant.AddTrack(publication);
                 }
 
