@@ -11,10 +11,6 @@ using LiveKit.Rooms.Tracks;
 
 namespace LiveKit
 {
-    //public class AudioFrameEvent
-    //{
-    //    internal AudioFrame frame;
-    //}
 
     public class AudioStream
     {

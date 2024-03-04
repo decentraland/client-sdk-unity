@@ -28,7 +28,6 @@ namespace LiveKit.Internal
 
         public static GraphicsFormat GetSupportedGraphicsFormat(GraphicsDeviceType type)
         {
-UnityEngine.Debug.LogError(type);
             if (QualitySettings.activeColorSpace == ColorSpace.Linear)
             {
                 switch (type)

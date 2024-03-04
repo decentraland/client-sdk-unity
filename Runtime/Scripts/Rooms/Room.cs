@@ -201,7 +201,6 @@ namespace LiveKit.Rooms
                         var trackHandle = ffiHandleFactory.NewFfiHandle((IntPtr)e.TrackSubscribed.Track.Handle.Id);
 
                         var track = tracksFactory.NewTrack(trackHandle, info, this, participant);
-                        Debug.LogError("Track Subscribed");
                         publication.UpdateTrack(track);
                         TrackSubscribed?.Invoke(track, publication, participant);
                     }

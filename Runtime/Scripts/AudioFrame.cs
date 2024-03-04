@@ -59,7 +59,6 @@ namespace LiveKit
         {
             if (!_disposed)
             {
-            // todo: clean dataPtr or convert to handle
                 _disposed = true;
             }
         }
