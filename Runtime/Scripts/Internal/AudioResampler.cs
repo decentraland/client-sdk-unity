@@ -37,7 +37,7 @@ namespace LiveKit
             remix.SampleRate = sampleRate;
             using var response = request.Send();
             FfiResponse res = response;
-            var bufferInfo = res.RemixAndResample.Buffer; 
+            var bufferInfo = res.RemixAndResample!.Buffer; 
             return new AudioFrame(bufferInfo.Info);
         }
     }
