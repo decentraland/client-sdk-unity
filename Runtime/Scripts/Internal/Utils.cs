@@ -28,6 +28,7 @@ namespace LiveKit.Internal
 
         public static GraphicsFormat GetSupportedGraphicsFormat(GraphicsDeviceType type)
         {
+UnityEngine.Debug.LogError(type);
             if (QualitySettings.activeColorSpace == ColorSpace.Linear)
             {
                 switch (type)
@@ -57,7 +58,7 @@ namespace LiveKit.Internal
                     case GraphicsDeviceType.OpenGLES3:
                         return GraphicsFormat.R8G8B8A8_UNorm;
                     case GraphicsDeviceType.Metal:
-                        return GraphicsFormat.B8G8R8A8_UNorm;
+                        return GraphicsFormat.R8G8B8A8_UNorm;
                 }
             }
 
