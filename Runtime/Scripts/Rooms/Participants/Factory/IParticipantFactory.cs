@@ -34,7 +34,7 @@ namespace LiveKit.Rooms.Participants.Factory
                 
                 var trackHandle = IFfiHandleFactory.Default.NewFfiHandle((IntPtr)pubInfo.Handle.Id);
 
-                var track = room.TracksFactory.NewTrack(trackHandle, null, room, participant);
+                var track = room.MyTracksFactory.NewTrack(trackHandle, TracksFactory.FromTPI2TI(pubInfo.Info), room, participant);
 
                 publication.UpdateTrack(track);
                

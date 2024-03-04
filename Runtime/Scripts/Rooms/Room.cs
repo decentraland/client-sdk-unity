@@ -53,7 +53,7 @@ namespace LiveKit.Rooms
 
         public IDataPipe DataPipe => dataPipe;
 
-        public ITracksFactory TracksFactory => tracksFactory;
+        public ITracksFactory MyTracksFactory => tracksFactory;
 
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
@@ -182,15 +182,12 @@ namespace LiveKit.Rooms
                     break;
                 case RoomEvent.MessageOneofCase.TrackPublished:
                     {
-                        Debug.LogError(e);
                         var participant = participantsHub.RemoteParticipantEnsured(e.TrackPublished!.ParticipantSid!);
                         var publication = trackPublicationFactory.NewTrackPublication(e.TrackPublished.Publication!.Info!);
                         var trackHandle = ffiHandleFactory.NewFfiHandle((IntPtr)e.TrackPublished.Publication!.Handle.Id);
 
-                        var track = tracksFactory.NewTrack(trackHandle, null, this, participant);
+                        var track = tracksFactory.NewTrack(trackHandle, TracksFactory.FromTPI2TI(e.TrackPublished.Publication!.Info), this, participant);
                         publication.UpdateTrack(track);
-                        Debug.LogError(" * ->  Track Published");
-                        Debug.LogError(publication);
 
                         participant.Publish(publication);
                         TrackPublished?.Invoke(publication, participant);
@@ -332,15 +329,7 @@ namespace LiveKit.Rooms
 
             var trackHandle = IFfiHandleFactory.Default.NewFfiHandle((IntPtr)p.Handle.Id);
 
-            // from TrackPublicationInfo to TrackInfo
-            TrackInfo info = new TrackInfo();
-            info.Kind = p.Info!.Kind;
-            info.Muted = p.Info!.Muted;
-            info.Name = p.Info!.Name;
-            info.Remote = p.Info!.Remote;
-            info.Sid = p.Info!.Sid;
-
-            var track = tracksFactory.NewTrack(trackHandle, info, this, Participants.LocalParticipant());
+            var track = tracksFactory.NewTrack(trackHandle, TracksFactory.FromTPI2TI(p.Info), this, Participants.LocalParticipant());
 
             publication.UpdateTrack(track);
 

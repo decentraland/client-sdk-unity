@@ -55,5 +55,18 @@ namespace LiveKit.Rooms.Tracks.Factory
             track.Construct(trackHandle, trackInfo.Info!, room, room.Participants.LocalParticipant());
             return track;
         }
+
+        public static TrackInfo FromTPI2TI(TrackPublicationInfo publicationInfo)
+        {
+            // from TrackPublicationInfo to TrackInfo
+            TrackInfo info = new TrackInfo();
+            info.Kind = publicationInfo!.Kind;
+            info.Muted = publicationInfo!.Muted;
+            info.Name = publicationInfo!.Name;
+            info.Remote = publicationInfo!.Remote;
+            info.Sid = publicationInfo!.Sid;
+            return info;
+        }
+
     }
 }
