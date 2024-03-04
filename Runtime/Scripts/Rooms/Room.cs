@@ -326,6 +326,26 @@ namespace LiveKit.Rooms
             FfiClient.Instance.DisconnectReceived += OnDisconnectReceived;
             ConnectionUpdated?.Invoke(this, ConnectionUpdate.Connected);
         }
+        internal void OnLocalTrackPublished(OwnedTrackPublication p)
+        {
+            var publication = trackPublicationFactory.NewTrackPublication(p.Info!);
+
+            var trackHandle = IFfiHandleFactory.Default.NewFfiHandle((IntPtr)p.Handle.Id);
+
+            // from TrackPublicationInfo to TrackInfo
+            TrackInfo info = new TrackInfo();
+            info.Kind = p.Info!.Kind;
+            info.Muted = p.Info!.Muted;
+            info.Name = p.Info!.Name;
+            info.Remote = p.Info!.Remote;
+            info.Sid = p.Info!.Sid;
+
+            var track = tracksFactory.NewTrack(trackHandle, info, this, Participants.LocalParticipant());
+
+            publication.UpdateTrack(track);
+
+            Participants.LocalParticipant().AddTrack(publication);
+        }
 
         private void OnDisconnectReceived(DisconnectCallback e)
         {

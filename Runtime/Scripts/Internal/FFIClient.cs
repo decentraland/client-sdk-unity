@@ -215,6 +215,9 @@ namespace LiveKit.Internal
                     case FfiEvent.MessageOneofCase.PublishTrack:
                         Instance.PublishTrackReceived?.Invoke(r.PublishTrack!);
                         break;
+                    case FfiEvent.MessageOneofCase.UnpublishTrack:
+                        //Utils.Debug(r.CaptureAudioFrame!);
+                        break;
                     case FfiEvent.MessageOneofCase.RoomEvent:
                         Utils.Debug("Call back on room event: " + r.RoomEvent!.MessageCase);
                         Instance.RoomEventReceived?.Invoke(r.RoomEvent);
