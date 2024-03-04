@@ -48,8 +48,10 @@ namespace LiveKit
             var gpuTextureFormat = GetTextureFormat(_bufferType); 
             if (!SystemInfo.IsFormatSupported(Texture.graphicsFormat, FormatUsage.ReadPixels))
             {
-                if (_dest == null)
+                if (_dest == null || _dest.width != GetWidth() || _dest.height != GetHeight())
                 {
+
+                    _data = new NativeArray<byte>(GetWidth() * GetHeight() * GetStrideForBuffer(_bufferType), Allocator.Persistent);
                     _dest = new Texture2D(GetWidth(), GetHeight(), gpuTextureFormat, false);
                 }
                 Graphics.CopyTexture(Texture, _dest);
@@ -58,6 +60,7 @@ namespace LiveKit
             {
                 _dest = Texture;
             }
+            
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, gpuTextureFormat, OnReadback);
         }
     }
