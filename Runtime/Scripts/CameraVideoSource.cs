@@ -30,7 +30,9 @@ namespace LiveKit
         public CameraVideoSource(Camera camera,   VideoBufferType bufferType = VideoBufferType.Rgba) : base(VideoStreamSource.Screen, bufferType)
         {
             Camera = camera;
-             _dest = new RenderTexture(GetWidth(), GetHeight(), 0); ;// camera.targetTexture;
+
+            var targetFormat = Utils.GetSupportedGraphicsFormat(SystemInfo.graphicsDeviceType);
+            _dest = new RenderTexture(GetWidth(), GetHeight(), 0, targetFormat);
             camera.targetTexture = _dest as RenderTexture;
             _data = new NativeArray<byte>(GetWidth() * GetHeight() * GetStrideForBuffer(bufferType), Allocator.Persistent);
         }

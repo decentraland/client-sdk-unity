@@ -57,7 +57,11 @@ namespace LiveKit
             if (_reading)
                 return;
             _reading = true;
-            if (_dest == null) _dest = new RenderTexture(GetWidth(), GetHeight(), 0);
+            if (_dest == null)
+            {
+                var targetFormat = Utils.GetSupportedGraphicsFormat(SystemInfo.graphicsDeviceType);
+                _dest = new RenderTexture(GetWidth(), GetHeight(), 0, targetFormat);
+            }
             ScreenCapture.CaptureScreenshotIntoRenderTexture(_dest as RenderTexture);
             AsyncGPUReadback.RequestIntoNativeArray(ref _data, _dest, 0, GetTextureFormat(_bufferType), OnReadback);
         }

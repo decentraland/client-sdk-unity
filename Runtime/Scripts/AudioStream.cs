@@ -140,7 +140,7 @@ namespace LiveKit
             if (_numChannels == 0)
                 return;
 
-            _pendingStreamEvents.Enqueue(e);
+            _pendingStreamEvents!.Enqueue(e);
         }
 
         private void Update()
@@ -149,7 +149,7 @@ namespace LiveKit
             {
                 Thread.Sleep(Constants.TASK_DELAY);
 
-                if (_pendingStreamEvents.Count > 0)
+                if (_pendingStreamEvents != null && _pendingStreamEvents.Count > 0)
                 {
                     var e = _pendingStreamEvents.Dequeue();
 
