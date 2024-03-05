@@ -222,8 +222,10 @@ namespace LiveKit.Internal
             Instance.context?.Post((resp) =>
             {
                 var r = resp as FfiEvent;
-                //if (r?.MessageCase != FfiEvent.MessageOneofCase.Logs)
-                //    Utils.Debug("Callback: " + r?.MessageCase);
+#if LK_VERBOSE
+                if (r?.MessageCase != FfiEvent.MessageOneofCase.Logs)
+                    Utils.Debug("Callback: " + r?.MessageCase);
+#endif
                 switch (r?.MessageCase)
                 {
                     case FfiEvent.MessageOneofCase.Logs:
@@ -237,7 +239,6 @@ namespace LiveKit.Internal
                         Instance.PublishTrackReceived?.Invoke(r.PublishTrack!);
                         break;
                     case FfiEvent.MessageOneofCase.RoomEvent:
-                        Utils.Debug("Call back on room event: " + r.RoomEvent!.MessageCase);
                         Instance.RoomEventReceived?.Invoke(r.RoomEvent);
                         break;
                     case FfiEvent.MessageOneofCase.TrackEvent:
