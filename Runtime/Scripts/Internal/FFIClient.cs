@@ -256,7 +256,6 @@ namespace LiveKit.Internal
                         Instance.AudioStreamEventReceived?.Invoke(r.AudioStreamEvent!);
                         break;
                     case FfiEvent.MessageOneofCase.CaptureAudioFrame:
-                        //Utils.Debug(r.CaptureAudioFrame!);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException($"Unknown message type: {r?.MessageCase.ToString() ?? "null"}");

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Rooms.TrackPublications;
-using UnityEngine;
 
 namespace LiveKit.Rooms.Participants.Factory
 {

@@ -1,7 +1,6 @@
 using System;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using System.Runtime.CompilerServices;
 using LiveKit.Internal.FFIClients.Requests;
 using UnityEngine;
 using UnityEngine.Rendering;

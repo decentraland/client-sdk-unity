@@ -1,7 +1,6 @@
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Tracks;
-using UnityEngine;
 
 namespace LiveKit.Rooms.TrackPublications
 {

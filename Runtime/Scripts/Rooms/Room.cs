@@ -17,7 +17,6 @@ using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.Tracks.Factory;
 using LiveKit.Rooms.Tracks.Hub;
-using UnityEngine;
 
 namespace LiveKit.Rooms
 {

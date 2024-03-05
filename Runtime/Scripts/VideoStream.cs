@@ -19,8 +19,6 @@ namespace LiveKit
         private VideoRotation _rotation;
         public VideoRotation Rotation => _rotation;
 
-       
-
         public VideoFrameEvent(VideoFrame frame, long timeStamp, VideoRotation rot)
         {
             _frame = frame;
@@ -110,14 +108,11 @@ namespace LiveKit
         {
             Stop();
             _playing = true;
-            //frameThread = new Thread(GetFrame);
-            //frameThread.Start();
         }
 
         public void Stop()
         {
             _playing = false;
-            //frameThread?.Abort();
         }
 
 
