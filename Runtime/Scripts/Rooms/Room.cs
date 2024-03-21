@@ -57,7 +57,7 @@ namespace LiveKit.Rooms
         private readonly IParticipantFactory participantFactory;
         private readonly ITrackPublicationFactory trackPublicationFactory;
         private readonly IMutableDataPipe dataPipe;
-        private readonly MemoryRoomInfo roomInfo = new();
+        private readonly MemoryRoomInfo roomInfo;
 
         public Room() : this(
             new ArrayMemoryPool(ArrayPool<byte>.Shared!),
@@ -67,12 +67,13 @@ namespace LiveKit.Rooms
             IFfiHandleFactory.Default, 
             IParticipantFactory.Default, 
             ITrackPublicationFactory.Default, 
-            new DataPipe()
+            new DataPipe(), 
+            new MemoryRoomInfo()
         )
         {
         }
 
-        public Room(IMemoryPool memoryPool, IMutableActiveSpeakers activeSpeakers, IMutableParticipantsHub participantsHub, ITracksFactory tracksFactory, IFfiHandleFactory ffiHandleFactory, IParticipantFactory participantFactory, ITrackPublicationFactory trackPublicationFactory, IMutableDataPipe dataPipe)
+        public Room(IMemoryPool memoryPool, IMutableActiveSpeakers activeSpeakers, IMutableParticipantsHub participantsHub, ITracksFactory tracksFactory, IFfiHandleFactory ffiHandleFactory, IParticipantFactory participantFactory, ITrackPublicationFactory trackPublicationFactory, IMutableDataPipe dataPipe, MemoryRoomInfo roomInfo)
         {
             this.memoryPool = memoryPool;
             this.activeSpeakers = activeSpeakers;
@@ -82,6 +83,7 @@ namespace LiveKit.Rooms
             this.participantFactory = participantFactory;
             this.trackPublicationFactory = trackPublicationFactory;
             this.dataPipe = dataPipe;
+            this.roomInfo = roomInfo;
             dataPipe.Assign(participantsHub);
         }
 
@@ -111,7 +113,7 @@ namespace LiveKit.Rooms
             {
                 case RoomEvent.MessageOneofCase.RoomMetadataChanged:
                 {
-                        roomInfo.Metadata = e.RoomMetadataChanged!.Metadata!;
+                        roomInfo.UpdateMetadata(e.RoomMetadataChanged!.Metadata!);
                         RoomMetadataChanged?.Invoke(roomInfo.Metadata);
                     }
                     break;
