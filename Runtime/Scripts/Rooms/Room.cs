@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using Google.Protobuf.Collections;
@@ -11,12 +10,14 @@ using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Rooms.ActiveSpeakers;
 using LiveKit.Rooms.AsyncInstractions;
 using LiveKit.Rooms.DataPipes;
+using LiveKit.Rooms.Info;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Participants.Factory;
 using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.Tracks.Factory;
 using LiveKit.Rooms.Tracks.Hub;
+using RoomInfo = LiveKit.Proto.RoomInfo;
 
 namespace LiveKit.Rooms
 {
@@ -24,12 +25,6 @@ namespace LiveKit.Rooms
     {
         public delegate void MetaDelegate(string metaData);
         public delegate void RemoteParticipantDelegate(Participant participant);
-
-        // ReSharper disable once UnusedAutoPropertyAccessor.Global
-        public string Sid { get; private set; } = string.Empty;
-        public string Name { get; private set; } = string.Empty;
-        // ReSharper disable once UnusedAutoPropertyAccessor.Global
-        public string Metadata { get; private set; } = string.Empty;
 
         internal FfiHandle Handle { get; private set; } = null!;
 
@@ -51,6 +46,8 @@ namespace LiveKit.Rooms
         public IParticipantsHub Participants => participantsHub;
 
         public IDataPipe DataPipe => dataPipe;
+
+        public IRoomInfo Info => roomInfo;
         
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
@@ -60,6 +57,7 @@ namespace LiveKit.Rooms
         private readonly IParticipantFactory participantFactory;
         private readonly ITrackPublicationFactory trackPublicationFactory;
         private readonly IMutableDataPipe dataPipe;
+        private readonly MemoryRoomInfo roomInfo = new();
 
         public Room() : this(
             new ArrayMemoryPool(ArrayPool<byte>.Shared!),
@@ -101,13 +99,6 @@ namespace LiveKit.Rooms
             ffiHandleFactory.Release(Handle);
         }
 
-        private void UpdateFromInfo(RoomInfo info)
-        {
-            Sid = info.Sid!;
-            Name = info.Name!;
-            Metadata = info.Metadata!;
-        }
-
         private void OnEventReceived(RoomEvent e)
         {
             if (e.RoomHandle != (ulong)Handle.DangerousGetHandle())
@@ -115,13 +106,13 @@ namespace LiveKit.Rooms
                 Utils.Debug("Ignoring. Different Room... " + e);
                 return;
             }
-            Utils.Debug($"Room {Name} Event Type: {e.MessageCase}   ---> ({e.RoomHandle} <=> {(ulong)Handle.DangerousGetHandle()})");
+            Utils.Debug($"Room {Info.Name} Event Type: {e.MessageCase}   ---> ({e.RoomHandle} <=> {(ulong)Handle.DangerousGetHandle()})");
             switch (e.MessageCase)
             {
                 case RoomEvent.MessageOneofCase.RoomMetadataChanged:
-                    {
-                        Metadata = e.RoomMetadataChanged!.Metadata!;
-                        RoomMetadataChanged?.Invoke(Metadata);
+                {
+                        roomInfo.Metadata = e.RoomMetadataChanged!.Metadata!;
+                        RoomMetadataChanged?.Invoke(roomInfo.Metadata);
                     }
                     break;
                 case RoomEvent.MessageOneofCase.ParticipantMetadataChanged:
@@ -290,7 +281,7 @@ namespace LiveKit.Rooms
             Utils.Debug(info);
 
             Handle = ffiHandleFactory.NewFfiHandle(roomHandle.Id);
-            UpdateFromInfo(info);
+            roomInfo.UpdateFromInfo(info);
 
             var selfParticipant = participantFactory.NewParticipant(
                 participant.Info!,
