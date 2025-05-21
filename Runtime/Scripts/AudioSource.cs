@@ -2,155 +2,146 @@ using System;
 using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
-using System.Threading;
 using LiveKit.Internal.FFIClients.Requests;
+using Livekit.Utils;
+using System.Runtime.InteropServices;
 
 namespace LiveKit
 {
     public class RtcAudioSource
     {
-        private AudioSource _audioSource;
-        private AudioFilter _audioFilter;
+        private const int DEFAULT_NUM_CHANNELS = 2;
+        private const int DEFAULT_SAMPLE_RATE = 48000;
+        private const float BUFFER_DURATION_S = 0.2f;
+        private const float S16_MAX_VALUE = 32767f;
+        private const float S16_MIN_VALUE = -32768f;
+        private const float S16_SCALE_FACTOR = 32768f;
 
-        internal FfiHandle Handle { get; }
+        private AudioSource audioSource;
+        private AudioFilter audioFilter;
+        private readonly Mutex<RingBuffer> buffer;
+        private short[] tempBuffer;
+        private AudioFrame frame;
+        private uint channels;
+        private uint sampleRate;
+        private int currentBufferSize;
+        private readonly object lockObject = new ();
 
-        protected AudioSourceInfo _info;
+        internal FfiHandle handle { get; }
 
-        // Used on the AudioThread
-        private AudioFrame _frame;
-        private Thread _readAudioThread;
-        private object _lock = new object();
-        private float[] _data;
-        private uint _channels;
-        private uint _sampleRate;
-        private volatile bool _pending = false;
-
-        public RtcAudioSource(AudioSource source, AudioFilter audioFilter)
+        public RtcAudioSource(AudioSource audioSource, AudioFilter audioFilter)
         {
+            buffer = new Mutex<RingBuffer>(new RingBuffer(0));
+            currentBufferSize = 0;
+            using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
+            var newAudioSource = request.request;
+            newAudioSource.Type = AudioSourceType.AudioSourceNative;
+            newAudioSource.NumChannels = DEFAULT_NUM_CHANNELS;
+            newAudioSource.SampleRate = DEFAULT_SAMPLE_RATE;
 
-                using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
-                var newAudioSource = request.request;
-                newAudioSource.Type = AudioSourceType.AudioSourceNative;
-                newAudioSource.NumChannels = 2;
-                newAudioSource.SampleRate = 48000;
-
-                using var response = request.Send();
-                FfiResponse res = response;
-                _info = res.NewAudioSource.Source.Info;
-                Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
-                UpdateSource(source, audioFilter);
-
+            using var response = request.Send();
+            FfiResponse res = response;
+            handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
+            this.audioSource = audioSource;
+            this.audioFilter = audioFilter;
         }
 
         public void Start()
         {
             Stop();
-            _readAudioThread = new Thread(Update);
-            _readAudioThread.Start();
+            if (!audioFilter || !audioSource) return;
 
-            _audioFilter.AudioRead += OnAudioRead;
-            _audioSource.Play();
+            audioFilter.AudioRead += OnAudioRead;
+            audioSource.Play();
         }
 
         public void Stop()
         {
-            _readAudioThread?.Abort();
-            if(_audioFilter) _audioFilter.AudioRead -= OnAudioRead;
-            if(_audioSource) _audioSource.Stop();
-        }
+            if (audioFilter) audioFilter.AudioRead -= OnAudioRead;
+            if (audioSource) audioSource.Stop();
 
-        private void Update()
-        {
-            while (true)
-            {
-                Thread.Sleep(Constants.TASK_DELAY);
-                if (_pending)
-                {
-                    ReadAudio();
-                }
-            }
-        }
-
-        private void ReadAudio()
-        {
-            _pending = false;
-            lock (_lock)
-            {
-                var samplesPerChannel = _data.Length / _channels;
-                if (_frame == null
-                    || _frame.NumChannels != _channels
-                    || _frame.SampleRate != _sampleRate
-                    || _frame.SamplesPerChannel != samplesPerChannel)
-                {
-                    _frame = new AudioFrame(_sampleRate, _channels, (uint)samplesPerChannel);
-                }
-
-                try
-                {
-                    static short FloatToS16(float v)
-                    {
-                        v *= 32768f;
-                        v = Math.Min(v, 32767f);
-                        v = Math.Max(v, -32768f);
-                        return (short)(v + Math.Sign(v) * 0.5f);
-                    }
-
-                    unsafe
-                    {
-                        var frameData = new Span<short>(_frame.Data.ToPointer(), _frame.Length / sizeof(short));
-                        for (int i = 0; i < _data.Length; i++)
-                        {
-                            frameData[i] = FloatToS16(_data[i]); 
-                        }
-
-                        // Don't play the audio locally
-                        Array.Clear(_data, 0, _data.Length);
-
-                        using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
-                        using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
-                        
-                        var pushFrame = request.request;
-                        pushFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
-
-                        pushFrame.Buffer = audioFrameBufferInfo;
-                        pushFrame.Buffer.DataPtr = (ulong)_frame.Data;
-                        pushFrame.Buffer.NumChannels = _frame.NumChannels;
-                        pushFrame.Buffer.SampleRate = _frame.SampleRate;
-                        pushFrame.Buffer.SamplesPerChannel = _frame.SamplesPerChannel;
-
-                        using var response = request.Send();
-
-                        pushFrame.Buffer.DataPtr = 0;
-                        pushFrame.Buffer.NumChannels = 0;
-                        pushFrame.Buffer.SampleRate = 0;
-                        pushFrame.Buffer.SamplesPerChannel = 0;
-                    }
-                }
-                catch (Exception e)
-                {
-                    Utils.Error("Audio Framedata error: " + e.Message);
-                }
-            }
-        }
-
-        private void UpdateSource(AudioSource source, AudioFilter audioFilter)
-        {
-            _audioSource = source;
-            _audioFilter = audioFilter;
+            using var guard = buffer.Lock();
+            guard.Value.Dispose();
+            frame?.Dispose();
         }
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
-            lock (_lock)
+            lock (lockObject)
             {
-                _data = data;
-                _channels = (uint)channels;
-                _sampleRate = (uint)sampleRate;
-                _pending = true;
+                int newBufferSize = (int)(channels * sampleRate * BUFFER_DURATION_S) * sizeof(short);
+                bool needsNewBuffer = newBufferSize != currentBufferSize;
+                bool needsNewTempBuffer = channels != this.channels || sampleRate != this.sampleRate || data.Length != tempBuffer?.Length;
+
+                if (needsNewBuffer || needsNewTempBuffer)
+                {
+                    if (needsNewBuffer)
+                    {
+                        using var guard = buffer.Lock();
+                        guard.Value.Dispose();
+                        guard.Value = new RingBuffer(newBufferSize);
+                        currentBufferSize = newBufferSize;
+                    }
+
+                    if (needsNewTempBuffer)
+                    {
+                        tempBuffer = new short[data.Length];
+                        this.channels = (uint)channels;
+                        this.sampleRate = (uint)sampleRate;
+                        frame?.Dispose();
+                        frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
+                    }
+                }
+
+                // Convert float to S16 and write to buffer
+                if (tempBuffer == null)
+                {
+                    Utils.Error("Temp buffer is null");
+                    return;
+                }
+
+                for (int i = 0; i < data.Length; i++)
+                {
+                    float normalizedSample = data[i] * S16_SCALE_FACTOR;
+                    normalizedSample = Math.Min(normalizedSample, S16_MAX_VALUE);
+                    normalizedSample = Math.Max(normalizedSample, S16_MIN_VALUE);
+                    tempBuffer[i] = (short)(normalizedSample + (Math.Sign(normalizedSample) * 0.5f));
+                }
+
+                var audioBytes = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
+
+                using (var guard = buffer.Lock())
+                {
+                    guard.Value.Write(audioBytes);
+                    ProcessAudioFrame();
+                }
             }
         }
 
-        
+        private void ProcessAudioFrame()
+        {
+            try
+            {
+                using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
+                using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
 
+                var pushFrame = request.request;
+                pushFrame.SourceHandle = (ulong)handle.DangerousGetHandle();
+
+                pushFrame.Buffer = audioFrameBufferInfo;
+                pushFrame.Buffer.DataPtr = (ulong)frame.Data;
+                pushFrame.Buffer.NumChannels = frame.NumChannels;
+                pushFrame.Buffer.SampleRate = frame.SampleRate;
+                pushFrame.Buffer.SamplesPerChannel = frame.SamplesPerChannel;
+
+                using var response = request.Send();
+
+                pushFrame.Buffer.DataPtr = 0;
+                pushFrame.Buffer.NumChannels = 0;
+                pushFrame.Buffer.SampleRate = 0;
+                pushFrame.Buffer.SamplesPerChannel = 0;
+            }
+            catch (Exception e) { Utils.Error("Audio Framedata error: " + e.Message); }
+        }
     }
 }
