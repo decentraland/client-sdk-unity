@@ -164,6 +164,9 @@ namespace LiveKit.Rooms
             await instruction.AwaitWithSuccess();
             ffiHandleFactory.Release(Handle);
         }
+        
+        public ITrack CreateAudioTrack(string name, RtcAudioSource source) =>
+            tracksFactory.NewAudioTrack(name, source, this);
 
         private void OnEventReceived(RoomEvent e)
         {
