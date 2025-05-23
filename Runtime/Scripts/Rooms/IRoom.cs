@@ -37,8 +37,6 @@ namespace LiveKit.Rooms
 
         Task<bool> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe);
 
-        Task DisconnectAsync(CancellationToken cancellationToken);
-        
-        ITrack CreateAudioTrack(string name, RtcAudioSource source);
+        Task DisconnectAsync(CancellationToken cancellationToken); 
     }
 }
