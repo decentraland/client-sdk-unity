@@ -5,6 +5,7 @@ using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Info;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Streaming.Audio;
+using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.Tracks.Hub;
 using LiveKit.Rooms.VideoStreaming;
 
@@ -28,12 +29,14 @@ namespace LiveKit.Rooms
 
         IAudioStreams AudioStreams { get; }
 
+        IAudioTracks AudioTracks { get; }
+
         void UpdateLocalMetadata(string metadata);
 
         void SetLocalName(string name);
 
         Task<bool> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe);
 
-        Task DisconnectAsync(CancellationToken cancellationToken);
+        Task DisconnectAsync(CancellationToken cancellationToken); 
     }
 }
