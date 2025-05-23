@@ -29,6 +29,8 @@ namespace LiveKit.Rooms
 
         IAudioStreams AudioStreams { get; }
 
+        IAudioTracks AudioTracks { get; }
+
         void UpdateLocalMetadata(string metadata);
 
         void SetLocalName(string name);
