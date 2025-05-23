@@ -19,6 +19,7 @@ namespace LiveKit
         private uint _samplesPerChannel;
         public uint SamplesPerChannel => _samplesPerChannel;
 
+        private NativeArray<byte> _data;
         private IntPtr _dataPtr;
         public IntPtr Data => _dataPtr;
         public int Length => (int)(SamplesPerChannel * NumChannels * sizeof(short));
@@ -31,8 +32,8 @@ namespace LiveKit
 
              unsafe
             {
-                var data = new NativeArray<byte>(Length, Allocator.Persistent);
-                _dataPtr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(data);
+                _data = new NativeArray<byte>(Length, Allocator.Persistent);
+                _dataPtr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
             }
         }
 
@@ -51,6 +52,10 @@ namespace LiveKit
         {
             if (!_disposed)
             {
+                if (_data.IsCreated)
+                {
+                    _data.Dispose();
+                }
                 _disposed = true;
             }
         }

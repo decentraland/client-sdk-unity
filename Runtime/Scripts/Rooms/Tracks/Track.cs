@@ -36,7 +36,6 @@ namespace LiveKit.Rooms.Tracks
         // IsOwned is true if C# owns the handle
         public bool IsOwned => Handle is { IsInvalid: false };
 
-
         public WeakReference<IRoom> Room { get; private set; }
         public WeakReference<Participant> Participant { get; private set;}
         public FfiHandle? Handle { get; private set; }

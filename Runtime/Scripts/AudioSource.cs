@@ -93,7 +93,6 @@ namespace LiveKit
                     }
                 }
 
-                // Convert float to S16 and write to buffer
                 if (tempBuffer == null)
                 {
                     Utils.Error("Temp buffer is null");
@@ -122,6 +121,25 @@ namespace LiveKit
         {
             try
             {
+                int frameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
+                
+                unsafe
+                {
+                    var frameSpan = new Span<byte>(frame.Data.ToPointer(), frameSize);
+                    
+                    using (var guard = buffer.Lock())
+                    {
+                        int bytesRead = guard.Value.Read(frameSpan);
+                        
+                        // Only send the frame if we have enough data
+                        if (bytesRead < frameSize)
+                        {
+                            // Not enough data available, clear the remaining bytes
+                            frameSpan.Slice(bytesRead).Clear();
+                        }
+                    }
+                }
+
                 using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
                 using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
 
