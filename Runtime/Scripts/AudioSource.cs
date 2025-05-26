@@ -68,7 +68,7 @@ namespace LiveKit
 
             using var guard = buffer.Lock();
             guard.Value.Dispose();
-            frame?.Dispose();
+            if (frame.IsValid) frame.Dispose();
         }
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
@@ -100,7 +100,7 @@ namespace LiveKit
                     tempBuffer = new short[data.Length];
                     this.channels = (uint)channels;
                     this.sampleRate = (uint)sampleRate;
-                    frame?.Dispose();
+                    if (frame.IsValid) frame.Dispose();
                     frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
                     
                     cachedFrameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
@@ -138,7 +138,7 @@ namespace LiveKit
 
         private void ProcessAudioFrame()
         {
-            if (frame == null) return;
+            if (!frame.IsValid) return;
 
             unsafe
             {
