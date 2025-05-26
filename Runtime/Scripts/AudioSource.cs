@@ -26,6 +26,9 @@ namespace LiveKit
         private uint sampleRate;
         private int currentBufferSize;
         private readonly object lockObject = new ();
+        
+        private int cachedFrameSize;
+        private Span<byte> cachedAudioBytesSpan;
 
         internal FfiHandle handle { get; }
 
@@ -71,14 +74,22 @@ namespace LiveKit
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
+            bool needsReconfiguration = channels != this.channels || 
+                                      sampleRate != this.sampleRate || 
+                                      data.Length != tempBuffer?.Length;
+            
+            int newBufferSize = 0;
+            if (needsReconfiguration)
+            {
+                newBufferSize = (int)(channels * sampleRate * BUFFER_DURATION_S) * sizeof(short);
+            }
+
             lock (lockObject)
             {
-                int newBufferSize = (int)(channels * sampleRate * BUFFER_DURATION_S) * sizeof(short);
-                bool needsNewBuffer = newBufferSize != currentBufferSize;
-                bool needsNewTempBuffer = channels != this.channels || sampleRate != this.sampleRate || data.Length != tempBuffer?.Length;
-
-                if (needsNewBuffer || needsNewTempBuffer)
+                if (needsReconfiguration)
                 {
+                    bool needsNewBuffer = newBufferSize != currentBufferSize;
+                    
                     if (needsNewBuffer)
                     {
                         using var guard = buffer.Lock();
@@ -87,14 +98,14 @@ namespace LiveKit
                         currentBufferSize = newBufferSize;
                     }
 
-                    if (needsNewTempBuffer)
-                    {
-                        tempBuffer = new short[data.Length];
-                        this.channels = (uint)channels;
-                        this.sampleRate = (uint)sampleRate;
-                        frame?.Dispose();
-                        frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
-                    }
+                    tempBuffer = new short[data.Length];
+                    this.channels = (uint)channels;
+                    this.sampleRate = (uint)sampleRate;
+                    frame?.Dispose();
+                    frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
+                    
+                    cachedFrameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
+                    cachedAudioBytesSpan = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
                 }
 
                 if (tempBuffer == null)
@@ -103,67 +114,54 @@ namespace LiveKit
                     return;
                 }
 
-                // Convert float to S16
+                var tempSpan = tempBuffer.AsSpan();
                 for (int i = 0; i < data.Length; i++)
                 {
-                    float normalizedSample = data[i] * S16_SCALE_FACTOR;
-                    normalizedSample = Math.Min(normalizedSample, S16_MAX_VALUE);
-                    normalizedSample = Math.Max(normalizedSample, S16_MIN_VALUE);
-                    tempBuffer[i] = (short)(normalizedSample + (Math.Sign(normalizedSample) * 0.5f));
+                    float sample = data[i] * S16_SCALE_FACTOR;
+                    if (sample > S16_MAX_VALUE) sample = S16_MAX_VALUE;
+                    else if (sample < S16_MIN_VALUE) sample = S16_MIN_VALUE;
+                    tempSpan[i] = (short)(sample + (sample >= 0 ? 0.5f : -0.5f));
                 }
 
-                var audioBytes = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
-
+                bool shouldProcessFrame = false;
                 using (var guard = buffer.Lock())
                 {
-                    guard.Value.Write(audioBytes);
-                    
-                    // Only process frame if we have enough data for a complete frame
-                    int frameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
-                    int availableData = guard.Value.AvailableRead();
-                    
-                    if (availableData >= frameSize)
-                    {
-                        ProcessAudioFrame();
-                    }
+                    guard.Value.Write(cachedAudioBytesSpan);
+                    shouldProcessFrame = guard.Value.AvailableRead() >= cachedFrameSize;
+                }
+                
+                if (shouldProcessFrame)
+                {
+                    ProcessAudioFrame();
                 }
             }
         }
 
         private void ProcessAudioFrame()
         {
-            try
-            {
-                if (frame == null)
-                {
-                    Utils.Error("AudioFrame is null in ProcessAudioFrame");
-                    return;
-                }
+            if (frame == null) return;
 
-                int frameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
+            unsafe
+            {
+                var frameSpan = new Span<byte>(frame.Data.ToPointer(), cachedFrameSize);
                 
-                unsafe
+                using (var guard = buffer.Lock())
                 {
-                    var frameSpan = new Span<byte>(frame.Data.ToPointer(), frameSize);
-                    
-                    using (var guard = buffer.Lock())
+                    int bytesRead = guard.Value.Read(frameSpan);
+                    if (bytesRead < cachedFrameSize)
                     {
-                        int bytesRead = guard.Value.Read(frameSpan);
-                        
-                        // Only send the frame if we have enough data
-                        if (bytesRead < frameSize)
-                        {
-                            return; // Don't send incomplete frames
-                        }
+                        return; // Don't send incomplete frames
                     }
                 }
+            }
 
+            try
+            {
                 using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
                 using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
 
                 var pushFrame = request.request;
                 pushFrame.SourceHandle = (ulong)handle.DangerousGetHandle();
-
                 pushFrame.Buffer = audioFrameBufferInfo;
                 pushFrame.Buffer.DataPtr = (ulong)frame.Data;
                 pushFrame.Buffer.NumChannels = frame.NumChannels;
