@@ -18,7 +18,7 @@ namespace LiveKit
         private const float S16_SCALE_FACTOR = 32768f;
 
         private AudioSource audioSource;
-        private AudioFilter audioFilter;
+        private IAudioFilter audioFilter;
         private readonly Mutex<RingBuffer> buffer;
         private short[] tempBuffer;
         private AudioFrame frame;
@@ -31,7 +31,7 @@ namespace LiveKit
 
         internal FfiHandle handle { get; }
 
-        public RtcAudioSource(AudioSource audioSource, AudioFilter audioFilter)
+        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
             buffer = new Mutex<RingBuffer>(new RingBuffer(0));
             currentBufferSize = 0;
@@ -51,7 +51,7 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            if (!audioFilter || !audioSource) 
+            if (!audioFilter?.IsValid == true || !audioSource) 
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
@@ -63,7 +63,7 @@ namespace LiveKit
 
         public void Stop()
         {
-            if (audioFilter) audioFilter.AudioRead -= OnAudioRead;
+            if (audioFilter?.IsValid == true) audioFilter.AudioRead -= OnAudioRead;
             if (audioSource) audioSource.Stop();
 
             using var guard = buffer.Lock();
