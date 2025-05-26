@@ -28,7 +28,6 @@ namespace LiveKit
         private readonly object lockObject = new ();
         
         private int cachedFrameSize;
-        private Span<byte> cachedAudioBytesSpan;
 
         internal FfiHandle handle { get; }
 
@@ -105,7 +104,6 @@ namespace LiveKit
                     frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
                     
                     cachedFrameSize = (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
-                    cachedAudioBytesSpan = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
                 }
 
                 if (tempBuffer == null)
@@ -126,7 +124,8 @@ namespace LiveKit
                 bool shouldProcessFrame = false;
                 using (var guard = buffer.Lock())
                 {
-                    guard.Value.Write(cachedAudioBytesSpan);
+                    var audioBytes = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
+                    guard.Value.Write(audioBytes);
                     shouldProcessFrame = guard.Value.AvailableRead() >= cachedFrameSize;
                 }
                 
