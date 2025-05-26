@@ -7,13 +7,15 @@ namespace LiveKit.Rooms.Tracks
     public class AudioTracks : IAudioTracks
     {
         private readonly ITracksFactory tracksFactory;
+        private readonly IRoom room;
 
-        public AudioTracks(ITracksFactory tracksFactory)
+        public AudioTracks(ITracksFactory tracksFactory, IRoom room)
         {
             this.tracksFactory = tracksFactory;
+            this.room = room;
         }
 
-        public ITrack CreateAudioTrack(string name, RtcAudioSource source, IRoom room) =>
+        public ITrack CreateAudioTrack(string name, RtcAudioSource source) =>
             tracksFactory.NewAudioTrack(name, source, room);
     }
 } 

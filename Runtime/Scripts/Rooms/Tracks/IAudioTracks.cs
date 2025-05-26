@@ -6,6 +6,6 @@ namespace LiveKit.Rooms.Tracks
 {
     public interface IAudioTracks
     {
-        ITrack CreateAudioTrack(string name, RtcAudioSource source, IRoom room);
+        ITrack CreateAudioTrack(string name, RtcAudioSource source);
     }
 } 

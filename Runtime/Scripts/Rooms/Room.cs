@@ -87,7 +87,7 @@ namespace LiveKit.Rooms
             new VideoStreams(capturedHub),
             new AudioStreams(capturedHub,
             new IAudioRemixConveyor.SameThreadAudioRemixConveyor()),
-            new AudioTracks(tracksFactory)
+            null! // AudioTracks will be created after Room construction
             )
         { }
 
@@ -117,7 +117,7 @@ namespace LiveKit.Rooms
             this.roomInfo = roomInfo;
             this.videoStreams = videoStreams;
             this.audioStreams = audioStreams;
-            this.audioTracks = audioTracks;
+            this.audioTracks = audioTracks ?? new AudioTracks(tracksFactory, this);
             dataPipe.Assign(participantsHub);
         }
 
