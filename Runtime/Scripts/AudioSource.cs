@@ -7,18 +7,20 @@ using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace LiveKit
 {
     public class RtcAudioSource : IDisposable
     {
-        private const int DEFAULT_NUM_CHANNELS = 2;
-        private const int DEFAULT_SAMPLE_RATE = 48000;
         private const float S16_MAX_VALUE = 32767f;
         private const float S16_MIN_VALUE = -32768f;
         private const float S16_SCALE_FACTOR = 32768f;
-        private const int FRAME_DURATION_MS = 10; // 10ms frames for consistent processing
-        private const int QUEUE_BUFFER_SIZE = 5; // 50ms buffer (5 frames of 10ms each)
+        private const int FRAME_DURATION_MS = 10;
+        private const int QUEUE_BUFFER_SIZE = 10;
+        
+        private const int BATCH_SIZE = 3;
+        private const int MAX_BATCH_DELAY_MS = 40;
 
         private AudioSource audioSource;
         private IAudioFilter audioFilter;
@@ -30,30 +32,29 @@ namespace LiveKit
         private int frameBufferLength;
         private int samplesPerFrame;
         private readonly object lockObject = new ();
-        
         private int cachedFrameSize;
-        
         private short[] blankFrame;
-        
         private readonly ConcurrentQueue<short[]> frameQueue = new();
         private CancellationTokenSource cancellationTokenSource;
         private Task queueProcessorTask;
         private bool isRunning;
+        private readonly List<short[]> batchBuffer = new();
+        private DateTime lastBatchSent = DateTime.UtcNow;
 
-        // Performance monitoring
         private long totalFramesSent;
         private long totalBlankFramesSent;
         private long totalDroppedFrames;
+        private long totalBatchesSent;
         private DateTime lastStatsLog = DateTime.UtcNow;
-
+        
         internal FfiHandle handle { get; }
 
-        // Public properties for monitoring
         public bool IsRunning => isRunning;
         public int QueueSize => frameQueue.Count;
         public long TotalFramesSent => totalFramesSent;
         public long TotalBlankFramesSent => totalBlankFramesSent;
         public long TotalDroppedFrames => totalDroppedFrames;
+        public long TotalBatchesSent => totalBatchesSent;
         public uint CurrentSampleRate => sampleRate;
         public uint CurrentChannels => channels;
 
@@ -61,7 +62,6 @@ namespace LiveKit
         {
             frameBufferLength = 0;
             
-            // Get actual audio settings from Unity AudioSource
             var actualSampleRate = (uint)AudioSettings.outputSampleRate;
             var actualChannels = (uint)(AudioSettings.speakerMode switch
             {
@@ -71,11 +71,9 @@ namespace LiveKit
                 AudioSpeakerMode.Surround => 5,
                 AudioSpeakerMode.Mode5point1 => 6,
                 AudioSpeakerMode.Mode7point1 => 8,
-                _ => DEFAULT_NUM_CHANNELS
+                _ => 2
             });
-            
-            Debug.Log($"RtcAudioSource: Using sample rate {actualSampleRate}Hz, {actualChannels} channels");
-            
+                       
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
@@ -123,6 +121,14 @@ namespace LiveKit
 
             isRunning = false;
             
+            lock (batchBuffer)
+            {
+                if (batchBuffer.Count > 0)
+                {
+                    SendBatchedFrames();
+                }
+            }
+            
             cancellationTokenSource?.Cancel();
             queueProcessorTask?.Wait(1000);
             
@@ -147,12 +153,12 @@ namespace LiveKit
                         if (frameQueue.TryDequeue(out var frameData))
                         {
                             SendQueuedFrame(frameData);
-                            consecutiveErrors = 0; // Reset error count on success
+                            consecutiveErrors = 0;
                         }
                         else if (samplesPerFrame > 0 && blankFrame != null)
                         {
                             SendQueuedFrame(blankFrame);
-                            consecutiveErrors = 0; // Reset error count on success
+                            consecutiveErrors = 0;
                         }
                         
                         await Task.Delay(FRAME_DURATION_MS, cancellationToken);
@@ -168,7 +174,6 @@ namespace LiveKit
                             break;
                         }
                         
-                        // Brief delay before retry
                         await Task.Delay(Math.Min(100, FRAME_DURATION_MS * consecutiveErrors), cancellationToken);
                     }
                 }
@@ -188,6 +193,69 @@ namespace LiveKit
         {
             if (!frame.IsValid) return;
 
+            lock (batchBuffer)
+            {
+                batchBuffer.Add(frameData);
+                
+                var timeSinceLastBatch = DateTime.UtcNow - lastBatchSent;
+                bool shouldSendBatch = batchBuffer.Count >= BATCH_SIZE || 
+                                     timeSinceLastBatch.TotalMilliseconds >= MAX_BATCH_DELAY_MS;
+                
+                if (shouldSendBatch && batchBuffer.Count > 0)
+                {
+                    SendBatchedFrames();
+                }
+            }
+        }
+
+        private void SendBatchedFrames()
+        {
+            if (batchBuffer.Count == 0) return;
+
+            try
+            {
+                foreach (var frameData in batchBuffer)
+                {
+                    SendSingleFrame(frameData);
+                    
+                    if (frameData == blankFrame)
+                    {
+                        Interlocked.Increment(ref totalBlankFramesSent);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref totalFramesSent);
+                    }
+                }
+                
+                Interlocked.Increment(ref totalBatchesSent);
+                lastBatchSent = DateTime.UtcNow;
+                
+                batchBuffer.Clear();
+                
+                var now = DateTime.UtcNow;
+                if ((now - lastStatsLog).TotalSeconds >= 30)
+                {
+                    lastStatsLog = now;
+                    var queueSize = frameQueue.Count;
+                    var totalFrames = totalFramesSent + totalBlankFramesSent;
+                    var dropRate = totalFrames > 0 ? (totalDroppedFrames * 100.0 / totalFrames) : 0;
+                    var queueUtilization = (queueSize * 100.0 / QUEUE_BUFFER_SIZE);
+                    var avgBatchSize = totalBatchesSent > 0 ? (totalFrames / (double)totalBatchesSent) : 0;
+                    
+                    Debug.Log($"RtcAudioSource Stats: Frames={totalFramesSent}, Blank={totalBlankFramesSent}, " +
+                             $"Dropped={totalDroppedFrames} ({dropRate:F2}%), Queue={queueSize}/{QUEUE_BUFFER_SIZE} ({queueUtilization:F1}%), " +
+                             $"Batches={totalBatchesSent} (avg {avgBatchSize:F1} frames/batch)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Utils.Error($"RtcAudioSource: Error sending batched frames: {ex.Message}");
+            }
+        }
+
+        private void SendSingleFrame(short[] frameData)
+        {
             unsafe
             {
                 var frameSpan = new Span<byte>(frame.Data.ToPointer(), cachedFrameSize);
@@ -197,25 +265,6 @@ namespace LiveKit
             }
 
             SendAudioFrame();
-            
-            // Track metrics
-            if (frameData == blankFrame)
-            {
-                Interlocked.Increment(ref totalBlankFramesSent);
-            }
-            else
-            {
-                Interlocked.Increment(ref totalFramesSent);
-            }
-            
-            // Log stats periodically (every 30 seconds)
-            var now = DateTime.UtcNow;
-            if ((now - lastStatsLog).TotalSeconds >= 30)
-            {
-                lastStatsLog = now;
-                var queueSize = frameQueue.Count;
-                Debug.Log($"RtcAudioSource Stats: Frames={totalFramesSent}, Blank={totalBlankFramesSent}, Dropped={totalDroppedFrames}, QueueSize={queueSize}");
-            }
         }
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
@@ -244,7 +293,7 @@ namespace LiveKit
                     
                     samplesPerFrame = (int)(sampleRate * channels * FRAME_DURATION_MS / 1000);
                     frameBuffer = new short[samplesPerFrame];
-                    blankFrame = new short[samplesPerFrame]; // Pre-allocate blank frame
+                    blankFrame = new short[samplesPerFrame];
                     frameBufferLength = 0;
                     
                     if (frame.IsValid) frame.Dispose();
@@ -261,15 +310,12 @@ namespace LiveKit
                     return;
                 }
 
-                // Convert float samples to short with optimized conversion
                 var tempSpan = tempBuffer.AsSpan();
                 var dataSpan = data.AsSpan();
                 
-                // Vectorized conversion for better performance
                 for (int i = 0; i < dataSpan.Length; i++)
                 {
                     float sample = dataSpan[i] * S16_SCALE_FACTOR;
-                    // Clamp and round in one operation
                     tempSpan[i] = (short)Math.Clamp(sample + (sample >= 0 ? 0.5f : -0.5f), S16_MIN_VALUE, S16_MAX_VALUE);
                 }
 
@@ -317,16 +363,27 @@ namespace LiveKit
             var frameCopy = new short[frameData.Length];
             Array.Copy(frameData, frameCopy, frameData.Length);
             
-            if (frameQueue.Count < QUEUE_BUFFER_SIZE)
+            var currentQueueSize = frameQueue.Count;
+            
+            if (currentQueueSize < QUEUE_BUFFER_SIZE)
             {
                 frameQueue.Enqueue(frameCopy);
+                
+                if (currentQueueSize >= QUEUE_BUFFER_SIZE * 0.8)
+                {
+                    Debug.LogWarning($"RtcAudioSource: Queue approaching capacity ({currentQueueSize}/{QUEUE_BUFFER_SIZE})");
+                }
             }
             else
             {
-                // Queue is full, drop the oldest frame and add the new one
                 frameQueue.TryDequeue(out _);
                 frameQueue.Enqueue(frameCopy);
                 Interlocked.Increment(ref totalDroppedFrames);
+                
+                if (totalDroppedFrames % 10 == 1)
+                {
+                    Debug.LogWarning($"RtcAudioSource: Dropped frame #{totalDroppedFrames} - queue overrun");
+                }
             }
         }
 
