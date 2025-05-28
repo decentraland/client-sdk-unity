@@ -189,7 +189,6 @@ namespace LiveKit
             catch (OperationCanceledException)
             {
                 // Expected when cancellation is requested
-                Debug.Log("RtcAudioSource: Queue processing cancelled");
             }
             catch (Exception ex)
             {
@@ -251,9 +250,6 @@ namespace LiveKit
                     var queueUtilization = (queueSize * 100.0 / QUEUE_BUFFER_SIZE);
                     var avgBatchSize = totalBatchesSent > 0 ? (totalFrames / (double)totalBatchesSent) : 0;
                     
-                    Debug.Log($"RtcAudioSource Stats: Frames={totalFramesSent}, Blank={totalBlankFramesSent}, " +
-                             $"Dropped={totalDroppedFrames} ({dropRate:F2}%), Queue={queueSize}/{QUEUE_BUFFER_SIZE} ({queueUtilization:F1}%), " +
-                             $"Batches={totalBatchesSent} (avg {avgBatchSize:F1} frames/batch)");
                 }
             }
             catch (Exception ex)
@@ -285,11 +281,6 @@ namespace LiveKit
             {
                 if (needsReconfiguration)
                 {
-                    if (this.channels != 0 || this.sampleRate != 0)
-                    {
-                        Debug.LogWarning($"RtcAudioSource: Audio format changed from {this.sampleRate}Hz/{this.channels}ch to {sampleRate}Hz/{channels}ch");
-                    }
-                    
                     if (frameBufferLength > 0)
                     {
                         FlushRemainingFrames();
@@ -308,13 +299,11 @@ namespace LiveKit
                     frame = new AudioFrame(this.sampleRate, this.channels, (uint)(samplesPerFrame / this.channels));
                     
                     cachedFrameSize = frame.Length;
-                    
-                    Debug.Log($"RtcAudioSource: Reconfigured for {sampleRate}Hz, {channels} channels, {samplesPerFrame} samples per frame");
                 }
 
                 if (tempBuffer == null)
                 {
-                    Debug.LogError("RtcAudioSource: Temp buffer is null");
+                    Utils.Error("RtcAudioSource: Temp buffer is null");
                     return;
                 }
 
@@ -377,10 +366,6 @@ namespace LiveKit
             {
                 frameQueue.Enqueue(frameCopy);
                 
-                if (currentQueueSize >= QUEUE_BUFFER_SIZE * 0.8)
-                {
-                    Debug.LogWarning($"RtcAudioSource: Queue approaching capacity ({currentQueueSize}/{QUEUE_BUFFER_SIZE})");
-                }
             }
             else
             {
@@ -388,10 +373,6 @@ namespace LiveKit
                 frameQueue.Enqueue(frameCopy);
                 Interlocked.Increment(ref totalDroppedFrames);
                 
-                if (totalDroppedFrames % 10 == 1)
-                {
-                    Debug.LogWarning($"RtcAudioSource: Dropped frame #{totalDroppedFrames} - queue overrun");
-                }
             }
         }
 
