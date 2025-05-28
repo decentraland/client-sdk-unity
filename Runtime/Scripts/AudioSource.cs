@@ -98,6 +98,12 @@ namespace LiveKit
 
         public void Start()
         {
+            if (disposed) 
+            {
+                Utils.Error("Cannot start RtcAudioSource: object has been disposed");
+                return;
+            }
+            
             Stop();
             if (audioFilter?.IsValid != true || !audioSource) 
             {
@@ -116,6 +122,8 @@ namespace LiveKit
 
         public void Stop()
         {
+            if (disposed) return;
+            
             if (audioFilter?.IsValid == true) audioFilter.AudioRead -= OnAudioRead;
             if (audioSource) audioSource.Stop();
 
@@ -434,7 +442,33 @@ namespace LiveKit
 
         public void Dispose()
         {
-            Stop();
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private bool disposed = false;
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (disposing)
+                {
+                    Stop();
+                }
+                
+                if (handle != null)
+                {
+                    handle.Dispose();
+                }
+                
+                disposed = true;
+            }
+        }
+
+        ~RtcAudioSource()
+        {
+            Dispose(false);
         }
     }
 }
