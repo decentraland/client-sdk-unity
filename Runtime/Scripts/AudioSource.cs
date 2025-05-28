@@ -23,7 +23,7 @@ namespace LiveKit
         private AudioSource audioSource;
         private IAudioFilter audioFilter;
         private short[] tempBuffer;
-        private short[] frameBuffer; // Buffer for 10ms frames
+        private short[] frameBuffer;
         private AudioFrame frame;
         private uint channels;
         private uint sampleRate;
@@ -63,7 +63,7 @@ namespace LiveKit
             
             // Get actual audio settings from Unity AudioSource
             var actualSampleRate = (uint)AudioSettings.outputSampleRate;
-            var actualChannels = (uint)AudioSettings.speakerMode switch
+            var actualChannels = (uint)(AudioSettings.speakerMode switch
             {
                 AudioSpeakerMode.Mono => 1,
                 AudioSpeakerMode.Stereo => 2,
@@ -72,7 +72,7 @@ namespace LiveKit
                 AudioSpeakerMode.Mode5point1 => 6,
                 AudioSpeakerMode.Mode7point1 => 8,
                 _ => DEFAULT_NUM_CHANNELS
-            };
+            });
             
             Debug.Log($"RtcAudioSource: Using sample rate {actualSampleRate}Hz, {actualChannels} channels");
             
