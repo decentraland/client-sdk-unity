@@ -3,7 +3,6 @@ using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
-using System.Runtime.InteropServices;
 
 namespace LiveKit
 {
@@ -16,21 +15,12 @@ namespace LiveKit
         private AudioSource audioSource;
         private IAudioFilter audioFilter;
         private short[] audioBuffer;
-        private AudioFrame frame;
-        private uint channels;
-        private uint sampleRate;
         private readonly object lockObject = new();
         private bool isRunning;
-
-        private long totalFramesSent;
-        private DateTime lastStatsLog = DateTime.UtcNow;
         
         internal FfiHandle handle { get; }
 
         public bool IsRunning => isRunning;
-        public long TotalFramesSent => totalFramesSent;
-        public uint CurrentSampleRate => sampleRate;
-        public uint CurrentChannels => channels;
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
@@ -96,12 +86,7 @@ namespace LiveKit
             if (audioSource) audioSource.Stop();
 
             isRunning = false;
-            
-            lock (lockObject)
-            {
-                if (frame.IsValid) frame.Dispose();
-                audioBuffer = null;
-            }
+            audioBuffer = null;
         }
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
@@ -110,10 +95,10 @@ namespace LiveKit
 
             lock (lockObject)
             {
-                if (channels != this.channels || sampleRate != this.sampleRate || 
-                    audioBuffer == null || audioBuffer.Length != data.Length)
+                // Recreate buffer only when size changes
+                if (audioBuffer == null || audioBuffer.Length != data.Length)
                 {
-                    UpdateAudioFormat(data.Length, channels, sampleRate);
+                    audioBuffer = new short[data.Length];
                 }
 
                 // Convert float samples to 16-bit PCM
@@ -123,69 +108,43 @@ namespace LiveKit
                     audioBuffer[i] = (short)Math.Clamp(sample + (sample >= 0 ? 0.5f : -0.5f), S16_MIN_VALUE, S16_MAX_VALUE);
                 }
 
-                SendAudioChunk(audioBuffer, channels);
+                SendAudioData(audioBuffer, channels, sampleRate);
             }
         }
 
-        private void UpdateAudioFormat(int dataLength, int channels, int sampleRate)
+        private void SendAudioData(short[] audioData, int channels, int sampleRate)
         {
-            this.channels = (uint)channels;
-            this.sampleRate = (uint)sampleRate;
-            audioBuffer = new short[dataLength];
-            
-            // Recreate frame for new format
-            if (frame.IsValid) frame.Dispose();
-            
-            uint samplesPerChannel = (uint)(dataLength / channels);
-            frame = new AudioFrame(this.sampleRate, this.channels, samplesPerChannel);
-        }
-
-        private void SendAudioChunk(short[] audioData, int channels)
-        {
-            if (!frame.IsValid) return;
-
             try
             {
                 uint samplesPerChannel = (uint)(audioData.Length / channels);
-                
-                if (frame.SamplesPerChannel != samplesPerChannel)
-                {
-                    frame.Dispose();
-                    frame = new AudioFrame(sampleRate, this.channels, samplesPerChannel);
-                }
 
-                // Copy audio data to native buffer
                 unsafe
                 {
-                    var frameSpan = new Span<byte>(frame.Data.ToPointer(), frame.Length);
-                    var audioBytes = MemoryMarshal.Cast<short, byte>(audioData.AsSpan());
-                    audioBytes.CopyTo(frameSpan);
+                    fixed (short* dataPtr = audioData)
+                    {
+                        using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
+                        using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
+
+                        var captureFrame = request.request;
+                        captureFrame.SourceHandle = (ulong)handle.DangerousGetHandle();
+                        captureFrame.Buffer = audioFrameBufferInfo;
+                        captureFrame.Buffer.DataPtr = (ulong)dataPtr;
+                        captureFrame.Buffer.NumChannels = (uint)channels;
+                        captureFrame.Buffer.SampleRate = (uint)sampleRate;
+                        captureFrame.Buffer.SamplesPerChannel = samplesPerChannel;
+
+                        using var response = request.Send();
+
+                        captureFrame.Buffer.DataPtr = 0;
+                        captureFrame.Buffer.NumChannels = 0;
+                        captureFrame.Buffer.SampleRate = 0;
+                        captureFrame.Buffer.SamplesPerChannel = 0;
+                    }
                 }
-
-                using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
-                using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
-
-                var captureFrame = request.request;
-                captureFrame.SourceHandle = (ulong)handle.DangerousGetHandle();
-                captureFrame.Buffer = audioFrameBufferInfo;
-                captureFrame.Buffer.DataPtr = (ulong)frame.Data;
-                captureFrame.Buffer.NumChannels = frame.NumChannels;
-                captureFrame.Buffer.SampleRate = frame.SampleRate;
-                captureFrame.Buffer.SamplesPerChannel = frame.SamplesPerChannel;
-
-                using var response = request.Send();
-
-                captureFrame.Buffer.DataPtr = 0;
-                captureFrame.Buffer.NumChannels = 0;
-                captureFrame.Buffer.SampleRate = 0;
-                captureFrame.Buffer.SamplesPerChannel = 0;
-
-                totalFramesSent++;
-                
             }
             catch (Exception e) 
             { 
-                Utils.Error($"RtcAudioSource: Error sending audio chunk: {e.Message}");
+                Utils.Error($"RtcAudioSource: Error sending audio data: {e.Message}");
             }
         }
 
@@ -217,3 +176,4 @@ namespace LiveKit
         }
     }
 }
+
