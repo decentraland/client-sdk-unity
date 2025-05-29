@@ -24,17 +24,13 @@ namespace LiveKit
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            var actualSampleRate = (uint)AudioSettings.outputSampleRate;
-            var actualChannels = (uint)(AudioSettings.speakerMode switch
+            if (audioSource == null || audioSource.clip == null)
             {
-                AudioSpeakerMode.Mono => 1,
-                AudioSpeakerMode.Stereo => 2,
-                AudioSpeakerMode.Quad => 4,
-                AudioSpeakerMode.Surround => 5,
-                AudioSpeakerMode.Mode5point1 => 6,
-                AudioSpeakerMode.Mode7point1 => 8,
-                _ => 2
-            });
+                Utils.Error("RtcAudioSource - AudioSource or its AudioClip is null");
+            }
+
+            var actualSampleRate = (uint)audioSource.clip.frequency;
+            var actualChannels = (uint)audioSource.clip.channels;
                        
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
