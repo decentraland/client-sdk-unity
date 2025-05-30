@@ -108,8 +108,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 Utils.Error("Invalid case, buffer is not set yet");
                 // prevent leak
-                var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
-                frame.Dispose();
+                var tempFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
+                tempFrame.Dispose();
                 return;
             }
 
