@@ -24,6 +24,10 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private bool disposed;
 
+        private uint _streamNativeChannels = 0;
+        private uint _streamNativeSampleRate = 0;
+        private bool _hasStreamFormat = false;
+
         public AudioStream(
             IAudioStreams audioStreams,
             OwnedAudioStream ownedAudioStream,
@@ -59,9 +63,13 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             lock (_lock)
             {
-                if (channels != _numChannels || sampleRate != _sampleRate || data.Length != _tempBuffer.Length)
+                // Use stream's native format if available, otherwise fall back to Unity's format
+                uint targetChannels = _hasStreamFormat ? _streamNativeChannels : (uint)channels;
+                uint targetSampleRate = _hasStreamFormat ? _streamNativeSampleRate : (uint)sampleRate;
+
+                if (targetChannels != _numChannels || targetSampleRate != _sampleRate || data.Length != _tempBuffer?.Length)
                 {
-                    int size = (int)(channels * sampleRate * 0.2); //0.2 stands for 200 ms
+                    int size = (int)(targetChannels * targetSampleRate * 0.07); // 70 ms buffer to reduce latency
                     if (_buffer != null)
                     {
                         using var guard = _buffer.Lock();
@@ -71,8 +79,8 @@ namespace LiveKit.Rooms.Streaming.Audio
                     _buffer = new Mutex<RingBuffer>(new RingBuffer(size * sizeof(short)));
 
                     _tempBuffer = new short[data.Length]; //todo avoid allocation of this buffer
-                    _numChannels = (uint)channels;
-                    _sampleRate = (uint)sampleRate;
+                    _numChannels = targetChannels;
+                    _sampleRate = targetSampleRate;
                 }
 
                 static float S16ToFloat(short v)
@@ -101,19 +109,33 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
+            var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            
+            // Capture the stream's native format from the first frame
+            if (!_hasStreamFormat)
+            {
+                lock (_lock)
+                {
+                    if (!_hasStreamFormat)
+                    {
+                        _streamNativeChannels = frame.numChannels;
+                        _streamNativeSampleRate = frame.sampleRate;
+                        _hasStreamFormat = true;
+                    }
+                }
+            }
+
             if (_numChannels == 0)
                 return;
 
             if (_buffer == null)
             {
-                Debug.LogError("Invalid case, buffer is not set yet");
+                Utils.Error("Invalid case, buffer is not set yet");
                 // prevent leak
-                var tempHandle = IFfiHandleFactory.Default.NewFfiHandle(e.FrameReceived.Frame.Handle.Id);
-                tempHandle.Dispose();
+                frame.Dispose();
                 return;
             }
 
-            var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
             audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
         }
     }
