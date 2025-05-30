@@ -18,6 +18,10 @@ namespace LiveKit
         private readonly object lockObject = new();
         private bool isRunning;
         
+        // Cache Unity's audio settings to avoid main thread access from audio thread
+        private readonly uint configuredSampleRate;
+        private readonly uint configuredChannels;
+        
         internal FfiHandle handle { get; }
 
         public bool IsRunning => isRunning;
@@ -84,6 +88,10 @@ namespace LiveKit
             handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
             this.audioSource = audioSource;
             this.audioFilter = audioFilter;
+
+            // Cache Unity's audio settings to avoid main thread access from audio thread
+            configuredSampleRate = actualSampleRate;
+            configuredChannels = actualChannels;
         }
 
         public void Start()
@@ -147,10 +155,16 @@ namespace LiveKit
                 uint samplesPerChannel = (uint)(audioData.Length / channels);
 
                 // Validate that the frame format matches what we configured the source for
-                if (sampleRate != AudioSettings.outputSampleRate)
+                if (sampleRate != configuredSampleRate)
                 {
-                    Utils.Error($"Sample rate mismatch! Expected {AudioSettings.outputSampleRate}Hz, got {sampleRate}Hz. " +
+                    Utils.Error($"Sample rate mismatch! Expected {configuredSampleRate}Hz, got {sampleRate}Hz. " +
                               "Audio data must be resampled to Unity's format before sending to LiveKit.");
+                    return;
+                }
+
+                if (channels != configuredChannels)
+                {
+                    Utils.Error($"Channel count mismatch! Expected {configuredChannels} channels, got {channels} channels.");
                     return;
                 }
 
