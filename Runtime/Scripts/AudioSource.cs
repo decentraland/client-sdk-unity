@@ -22,15 +22,47 @@ namespace LiveKit
 
         public bool IsRunning => isRunning;
 
+        /// <summary>
+        /// Configures Unity's audio system for optimal LiveKit compatibility.
+        /// Call this once at application startup.
+        /// </summary>
+        public static void ConfigureUnityAudioForLiveKit()
+        {
+            // Set Unity to use 48kHz to match LiveKit's transmission format
+            var configuration = AudioSettings.GetConfiguration();
+            configuration.sampleRate = 48000;  // 48kHz - LiveKit standard
+            configuration.dspBufferSize = 512;  // Good balance of latency and performance
+            
+            if (!AudioSettings.Reset(configuration))
+            {
+                Utils.Error("Failed to configure Unity audio for 48kHz. Using default settings.");
+            }
+            else
+            {
+                Utils.Debug("Unity audio configured for LiveKit: 48kHz sample rate");
+            }
+        }
+
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            if (audioSource == null || audioSource.clip == null)
+            if (audioSource == null)
             {
-                Utils.Error("RtcAudioSource - AudioSource or its AudioClip is null");
+                Utils.Error("RtcAudioSource - AudioSource is null");
+                throw new ArgumentException("AudioSource must be valid");
             }
 
-            var actualSampleRate = (uint)audioSource.clip.frequency;
-            var actualChannels = (uint)audioSource.clip.channels;
+            // Use Unity's audio system format since that's what OnAudioFilterRead provides
+            var actualSampleRate = (uint)AudioSettings.outputSampleRate;
+            var actualChannels = (uint)(AudioSettings.speakerMode switch
+            {
+                AudioSpeakerMode.Mono => 1,
+                AudioSpeakerMode.Stereo => 2,
+                AudioSpeakerMode.Quad => 4,
+                AudioSpeakerMode.Surround => 5,
+                AudioSpeakerMode.Mode5point1 => 6,
+                AudioSpeakerMode.Mode7point1 => 8,
+                _ => 2
+            });
                        
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
@@ -113,6 +145,14 @@ namespace LiveKit
             try
             {
                 uint samplesPerChannel = (uint)(audioData.Length / channels);
+
+                // Validate that the frame format matches what we configured the source for
+                if (sampleRate != AudioSettings.outputSampleRate)
+                {
+                    Utils.Error($"Sample rate mismatch! Expected {AudioSettings.outputSampleRate}Hz, got {sampleRate}Hz. " +
+                              "Audio data must be resampled to Unity's format before sending to LiveKit.");
+                    return;
+                }
 
                 unsafe
                 {
