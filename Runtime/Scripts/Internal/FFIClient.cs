@@ -40,6 +40,7 @@ namespace LiveKit.Internal
         // participant events are not allowed in the fii protocol public event ParticipantEventReceivedDelegate ParticipantEventReceived;
         public event VideoStreamEventReceivedDelegate? VideoStreamEventReceived;
         public event AudioStreamEventReceivedDelegate? AudioStreamEventReceived;
+        public event GetStatsReceivedDelegate? GetStatsReceived;
 
         public FfiClient() : this(Pools.NewFfiResponsePool(), new ArrayMemoryPool())
         {
@@ -272,6 +273,7 @@ namespace LiveKit.Internal
                     case FfiEvent.MessageOneofCase.CaptureAudioFrame:
                         break;
                     case FfiEvent.MessageOneofCase.GetStats:
+                    Instance.GetStatsReceived?.Invoke(response.GetStats);
                         break;
                     case FfiEvent.MessageOneofCase.Panic:
                         Debug.LogError($"Panic received from FFI: {response.Panic?.Message}");
