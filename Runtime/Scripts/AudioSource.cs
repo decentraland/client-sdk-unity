@@ -47,7 +47,7 @@ namespace LiveKit
             }
         }
 
-        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
+        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null)
         {
             if (audioSource == null)
             {
@@ -57,17 +57,28 @@ namespace LiveKit
 
             // Use Unity's audio system format since that's what OnAudioFilterRead provides
             var actualSampleRate = (uint)AudioSettings.outputSampleRate;
-            var actualChannels = (uint)(AudioSettings.speakerMode switch
+            
+            uint actualChannels;
+            if (forceChannels.HasValue)
             {
-                AudioSpeakerMode.Mono => 1,
-                AudioSpeakerMode.Stereo => 2,
-                AudioSpeakerMode.Quad => 4,
-                AudioSpeakerMode.Surround => 5,
-                AudioSpeakerMode.Mode5point1 => 6,
-                AudioSpeakerMode.Mode7point1 => 8,
-                _ => 2
-            });
-                       
+                // Use explicitly specified channel count (e.g., 1 for voice chat)
+                actualChannels = forceChannels.Value;
+            }
+            else
+            {
+                // Use Unity's audio system format since that's what OnAudioFilterRead provides
+                actualChannels = (uint)(AudioSettings.speakerMode switch
+                {
+                    AudioSpeakerMode.Mono => 1,
+                    AudioSpeakerMode.Stereo => 2,
+                    AudioSpeakerMode.Quad => 4,
+                    AudioSpeakerMode.Surround => 5,
+                    AudioSpeakerMode.Mode5point1 => 6,
+                    AudioSpeakerMode.Mode7point1 => 8,
+                    _ => 1  // Default to mono for voice chat instead of stereo
+                });
+            }
+            
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
@@ -223,6 +234,24 @@ namespace LiveKit
         ~RtcAudioSource()
         {
             Dispose(false);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource optimized for voice chat (mono, 1 channel).
+        /// Voice chat doesn't benefit from stereo and mono reduces bandwidth usage.
+        /// </summary>
+        public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource for high-quality audio (stereo, 2 channels).
+        /// Suitable for music, screen share audio, or other high-fidelity audio content.
+        /// </summary>
+        public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2);
         }
     }
 }
