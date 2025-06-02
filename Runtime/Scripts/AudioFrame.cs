@@ -1,22 +1,20 @@
 using System;
-using LiveKit.Proto;
-using LiveKit.Internal;
-using LiveKit.Internal.FFIClients.Requests;
+using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using System.Runtime.InteropServices;
+using LiveKit.Internal;
 
 namespace LiveKit
 {
     public struct AudioFrame : IDisposable
     {
-        public readonly uint NumChannels;
-        public readonly uint SampleRate;
-        public readonly uint SamplesPerChannel;
-
         private readonly NativeArray<byte> _data;
         private readonly IntPtr _dataPtr;
         private bool _disposed;
+
+        public readonly uint NumChannels;
+        public readonly uint SampleRate;
+        public readonly uint SamplesPerChannel;
         
         public IntPtr Data => _dataPtr;
         public int Length => (int)(SamplesPerChannel * NumChannels * sizeof(short));

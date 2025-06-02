@@ -5,45 +5,45 @@ namespace LiveKit.Rooms.Streaming.Audio
 {
     public class LivekitAudioSource : MonoBehaviour
     {
-        private static ulong counter;
+        private static ulong _counter;
 
-        private int sampleRate;
-        private WeakReference<IAudioStream>? stream;
-        private AudioSource audioSource = null!;
+        private AudioSource _audioSource = null!;
+        private int _sampleRate;
+        private WeakReference<IAudioStream>? _stream;
 
         public static LivekitAudioSource New(bool explicitName = false)
         {
             var gm = new GameObject();
             var audioSource = gm.AddComponent<AudioSource>();
             var source = gm.AddComponent<LivekitAudioSource>();
-            source.audioSource = audioSource;
-            if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
+            source._audioSource = audioSource;
+            if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{_counter++}";
             return source;
         }
 
         public void Construct(WeakReference<IAudioStream> audioStream)
         {
-            stream = audioStream;
+            _stream = audioStream;
         }
 
         public void Free()
         {
-            stream = null;
+            _stream = null;
         }
 
         public void Play()
         {
-            audioSource.Play();
+            _audioSource.Play();
         }
 
         public void Stop()
         {
-            audioSource.Stop();
+            _audioSource.Stop();
         }
 
         public void SetVolume(float target)
         {
-            audioSource.volume = target;
+            _audioSource.volume = target;
         }
 
         private void OnEnable()
@@ -59,15 +59,15 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private void OnAudioConfigurationChanged(bool deviceWasChanged)
         {
-            sampleRate = AudioSettings.outputSampleRate;
+            _sampleRate = AudioSettings.outputSampleRate;
         }
 
         // Called by Unity on the Audio thread
         private void OnAudioFilterRead(float[] data, int channels)
         {
-            if (stream != null && stream.TryGetTarget(out var s))
+            if (_stream != null && _stream.TryGetTarget(out var s))
             {
-                s?.ReadAudio(data, channels, sampleRate);
+                s?.ReadAudio(data, channels, _sampleRate);
             }
         }
     }

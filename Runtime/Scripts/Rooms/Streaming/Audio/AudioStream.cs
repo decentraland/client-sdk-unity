@@ -1,28 +1,25 @@
 using System;
+using System.Runtime.InteropServices;
+using UnityEngine;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using System.Runtime.InteropServices;
 using Livekit.Utils;
-using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
     public class AudioStream : IAudioStream
     {
-        private readonly IAudioStreams audioStreams;
-        private readonly IAudioRemixConveyor audioRemixConveyor;
-        private readonly FfiHandle handle;
-        private readonly AudioStreamInfo info;
+        private readonly IAudioStreams _audioStreams;
+        private readonly IAudioRemixConveyor _audioRemixConveyor;
+        private readonly FfiHandle _handle;
+        private readonly AudioStreamInfo _info;
+        private readonly object _lockObject = new();
 
-        private IAudioFilter _audioFilter;
         private Mutex<RingBuffer>? _buffer;
-        private short[] _tempBuffer;
-        private uint _numChannels = 0;
+        private short[]? _tempBuffer;
+        private uint _numChannels;
         private uint _sampleRate;
-
-        private readonly object _lock = new();
-
-        private bool disposed;
+        private bool _disposed;
 
         public AudioStream(
             IAudioStreams audioStreams,
@@ -30,36 +27,18 @@ namespace LiveKit.Rooms.Streaming.Audio
             IAudioRemixConveyor audioRemixConveyor
         )
         {
-            this.audioStreams = audioStreams;
-            this.audioRemixConveyor = audioRemixConveyor;
-            handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
-            info = ownedAudioStream.Info!;
+            _audioStreams = audioStreams;
+            _audioRemixConveyor = audioRemixConveyor;
+            _handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
+            _info = ownedAudioStream.Info!;
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
-        }
-
-        public void Dispose()
-        {
-            if (disposed)
-                return;
-
-            disposed = true;
-
-            handle.Dispose();
-            if (_buffer != null)
-            {
-                using var guard = _buffer.Lock();
-                guard.Value.Dispose();
-            }
-
-            FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
-            audioStreams.Release(this);
         }
 
         public void ReadAudio(float[] data, int channels, int sampleRate)
         {
-            lock (_lock)
+            lock (_lockObject)
             {
-                if (channels != _numChannels || sampleRate != _sampleRate || data.Length != _tempBuffer.Length)
+                if (channels != _numChannels || sampleRate != _sampleRate || _tempBuffer == null || data.Length != _tempBuffer.Length)
                 {
                     int size = (int)(channels * sampleRate * 0.2); //0.2 stands for 200 ms
                     if (_buffer != null)
@@ -81,7 +60,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 }
 
                 // "Send" the data to Unity
-                var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan().Slice(0, data.Length));
+                var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer!.AsSpan().Slice(0, data.Length));
 
                 {
                     using var guard = _buffer!.Lock();
@@ -93,9 +72,27 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
         }
 
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            _handle.Dispose();
+            if (_buffer != null)
+            {
+                using var guard = _buffer.Lock();
+                guard.Value.Dispose();
+            }
+
+            FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
+            _audioStreams.Release(this);
+        }
+
         private void OnAudioStreamEvent(AudioStreamEvent e)
         {
-            if (e.StreamHandle != (ulong)handle.DangerousGetHandle())
+            if (e.StreamHandle != (ulong)_handle.DangerousGetHandle())
                 return;
 
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
@@ -114,7 +111,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
 
             var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
-            audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
+            _audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
         }
     }
 }

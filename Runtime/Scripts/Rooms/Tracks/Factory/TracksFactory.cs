@@ -1,4 +1,3 @@
-using System;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
@@ -9,7 +8,7 @@ namespace LiveKit.Rooms.Tracks.Factory
 {
     public class TracksFactory : ITracksFactory
     {
-        private readonly IObjectPool<Track> trackPool;
+        private readonly IObjectPool<Track> _trackPool;
 
         public TracksFactory() : this(new TrackPool())
         {
@@ -17,7 +16,7 @@ namespace LiveKit.Rooms.Tracks.Factory
 
         public TracksFactory(IObjectPool<Track> trackPool)
         {
-            this.trackPool = trackPool;
+            _trackPool = trackPool;
         }
 
         public ITrack NewAudioTrack(string name, RtcAudioSource source, IRoom room)
@@ -25,7 +24,7 @@ namespace LiveKit.Rooms.Tracks.Factory
             using var request = FFIBridge.Instance.NewRequest<CreateAudioTrackRequest>();
             var createTrack = request.request;
             createTrack.Name = name;
-            createTrack.SourceHandle = (ulong)source.handle.DangerousGetHandle();
+            createTrack.SourceHandle = (ulong)source.Handle.DangerousGetHandle();
             using var response = request.Send();
             return CreateTrack(response, room, true);
         }
@@ -42,7 +41,7 @@ namespace LiveKit.Rooms.Tracks.Factory
 
         public ITrack NewTrack(FfiHandle? handle, TrackInfo info, Room room, Participant participant)
         {
-            var track = trackPool.Get()!;
+            var track = _trackPool.Get()!;
             track.Construct(handle, info, room, participant);
             return track;
         }
@@ -51,7 +50,7 @@ namespace LiveKit.Rooms.Tracks.Factory
         {
             var trackInfo = isAudio ? res.CreateAudioTrack!.Track : res.CreateVideoTrack!.Track;
             var trackHandle = IFfiHandleFactory.Default.NewFfiHandle(trackInfo!.Handle!.Id);
-            var track = trackPool.Get()!;
+            var track = _trackPool.Get()!;
             track.Construct(trackHandle, trackInfo.Info!, room, room.Participants.LocalParticipant());
             return track;
         }
