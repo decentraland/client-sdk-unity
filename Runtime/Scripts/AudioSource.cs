@@ -39,18 +39,18 @@ namespace LiveKit
         private volatile int _readIndex = 1;
         private readonly object _swapLock = new();
         private readonly SemaphoreSlim _dataAvailable = new(0, 1);
-        private CancellationTokenSource _cancellationTokenSource;
+        private CancellationTokenSource? _cancellationTokenSource;
         private Task _backgroundTask;
         private bool _isRunning;
-        private readonly uint _configuredSampleRate;
-        private readonly uint _configuredChannels;
+        private uint _configuredSampleRate;
+        private uint _configuredChannels;
         private bool _disposed;
 
-        internal FfiHandle Handle { get; }
+        internal FfiHandle Handle { get; private set; }
 
         public bool IsRunning => _isRunning;
 
-        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, AudioProcessingOptions? options = null)
+        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, uint? forceSampleRate = null, AudioProcessingOptions? options = null)
         {
             if (audioSource == null)
             {
@@ -58,71 +58,36 @@ namespace LiveKit
                 throw new ArgumentException("AudioSource must be valid");
             }
 
-            var audioOptions = options ?? AudioProcessingOptions.Default;
-
-            var actualSampleRate = (uint)AudioSettings.outputSampleRate;
-            
-            uint actualChannels;
-            if (forceChannels.HasValue)
-            {
-                actualChannels = forceChannels.Value;
-            }
-            else
-            {
-                actualChannels = (uint)(AudioSettings.speakerMode switch
-                {
-                    AudioSpeakerMode.Mono => 1,
-                    AudioSpeakerMode.Stereo => 2,
-                    AudioSpeakerMode.Quad => 4,
-                    AudioSpeakerMode.Surround => 5,
-                    AudioSpeakerMode.Mode5point1 => 6,
-                    AudioSpeakerMode.Mode7point1 => 8,
-                    _ => 1  // Default to mono for voice chat instead of stereo
-                });
-            }
-            
-            using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
-            var newAudioSource = request.request;
-            newAudioSource.Type = AudioSourceType.AudioSourceNative;
-            newAudioSource.NumChannels = actualChannels;
-            newAudioSource.SampleRate = actualSampleRate;
-            
-            newAudioSource.Options = new AudioSourceOptions
-            {
-                EchoCancellation = audioOptions.EchoCancellation,
-                NoiseSuppression = audioOptions.NoiseSuppression,
-                AutoGainControl = audioOptions.AutoGainControl
-            };
-            
-            newAudioSource.EnableQueue = true;
-
-            using var response = request.Send();
-            FfiResponse res = response;
-            Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
-            _audioSource = audioSource;
-            _audioFilter = audioFilter;
-
-            // Cache Unity's audio settings to avoid main thread access from audio thread
-            _configuredSampleRate = actualSampleRate;
-            _configuredChannels = actualChannels;
+            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
         }
 
         /// <summary>
         /// Creates an RtcAudioSource optimized for voice chat (mono, 1 channel).
         /// Voice chat doesn't benefit from stereo and mono reduces bandwidth usage.
+        /// Uses the microphone's actual sample rate.
         /// </summary>
         public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, AudioProcessingOptions.Default);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, options: AudioProcessingOptions.Default);
         }
 
         /// <summary>
         /// Creates an RtcAudioSource for high-quality audio (stereo, 2 channels).
         /// Suitable for music, screen share audio, or other high-fidelity audio content.
+        /// Uses the audio source's actual sample rate.
         /// </summary>
         public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, AudioProcessingOptions.HighQuality);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, options: AudioProcessingOptions.HighQuality);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource with full custom configuration including sample rate override.
+        /// Only use this if you need to override the detected sample rate for special use cases.
+        /// </summary>
+        public static RtcAudioSource CreateCustom(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels, AudioProcessingOptions? options = null)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: options ?? AudioProcessingOptions.Default);
         }
 
         public void Start()
@@ -133,24 +98,23 @@ namespace LiveKit
                 return;
             }
             
-            Stop(); // Ensure clean state
+            Stop();
+            
             if (_audioFilter?.IsValid != true || !_audioSource) 
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
-            // Initialize double buffering
             _buffers[0].Reset();
             _buffers[1].Reset();
             _writeIndex = 0;
             _readIndex = 1;
             
-            // Start background processing task with proper disposal
-            _cancellationTokenSource?.Dispose(); // Clean up previous if any
+            _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new CancellationTokenSource();
             
-            _backgroundTask?.Dispose(); // Clean up previous task if any
+            _backgroundTask?.Dispose();
             _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
 
             _isRunning = true;
@@ -192,13 +156,102 @@ namespace LiveKit
                     }
                 }
                 
-                // Proper disposal order: task first, then cancellation token
                 _backgroundTask?.Dispose();
                 _backgroundTask = null;
                 
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
             }
+        }
+
+        /// <summary>
+        /// Reconfigures the RtcAudioSource with new audio components and settings.
+        /// Useful for switching microphones or changing audio configuration without creating a new instance.
+        /// The audio source will be stopped and needs to be manually started again after reconfiguration.
+        /// </summary>
+        /// <param name="audioSource">New AudioSource component</param>
+        /// <param name="audioFilter">New IAudioFilter component</param>
+        /// <param name="forceChannels">Optional: Override channel count (null = auto-detect)</param>
+        /// <param name="forceSampleRate">Optional: Override sample rate (null = auto-detect)</param>
+        /// <param name="options">Optional: Audio processing options</param>
+        public void Reconfigure(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, uint? forceSampleRate = null, AudioProcessingOptions? options = null)
+        {
+            if (_disposed) 
+            {
+                Utils.Error("Cannot reconfigure RtcAudioSource: object has been disposed");
+                return;
+            }
+
+            if (audioSource == null)
+            {
+                Utils.Error("RtcAudioSource.Reconfigure - AudioSource is null");
+                throw new ArgumentException("AudioSource must be valid");
+            }
+
+            Stop();
+            Handle?.Dispose(); // Dispose old FFI handle
+
+            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
+            
+            Utils.Debug($"RtcAudioSource reconfigured: {_configuredSampleRate}Hz, {_configuredChannels}ch");
+        }
+
+        private void ConfigureAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels, uint? forceSampleRate, AudioProcessingOptions? options)
+        {
+            var audioOptions = options ?? AudioProcessingOptions.Default;
+
+            uint actualSampleRate;
+            if (forceSampleRate.HasValue)
+            {
+                actualSampleRate = forceSampleRate.Value;
+            }
+            else
+            {
+                actualSampleRate = (uint)AudioSettings.outputSampleRate;
+            }
+            
+            uint actualChannels;
+            if (forceChannels.HasValue)
+            {
+                actualChannels = forceChannels.Value;
+            }
+            else
+            {
+                actualChannels = (uint)(AudioSettings.speakerMode switch
+                {
+                    AudioSpeakerMode.Mono => 1,
+                    AudioSpeakerMode.Stereo => 2,
+                    AudioSpeakerMode.Quad => 4,
+                    AudioSpeakerMode.Surround => 5,
+                    AudioSpeakerMode.Mode5point1 => 6,
+                    AudioSpeakerMode.Mode7point1 => 8,
+                    _ => 1
+                });
+            }
+            
+            using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
+            var newAudioSource = request.request;
+            newAudioSource.Type = AudioSourceType.AudioSourceNative;
+            newAudioSource.NumChannels = actualChannels;
+            newAudioSource.SampleRate = actualSampleRate;
+            
+            newAudioSource.Options = new AudioSourceOptions
+            {
+                EchoCancellation = audioOptions.EchoCancellation,
+                NoiseSuppression = audioOptions.NoiseSuppression,
+                AutoGainControl = audioOptions.AutoGainControl
+            };
+            
+            newAudioSource.EnableQueue = true;
+
+            using var response = request.Send();
+            FfiResponse res = response;
+            Handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
+            
+            _audioSource = audioSource;
+            _audioFilter = audioFilter;
+            _configuredSampleRate = actualSampleRate;
+            _configuredChannels = actualChannels;
         }
 
         public void Dispose()
@@ -384,17 +437,17 @@ namespace LiveKit
                             
                             try
                             {
-                                // Validate buffer format matches configuration
+                                // Validate that audio format matches this source's configuration
+                                // Each source maintains its own consistent sample rate
                                 if (readBuffer.SampleRate == _configuredSampleRate && 
                                     readBuffer.Channels == _configuredChannels)
                                 {
-                                    // Send data on background thread (can be slow without affecting audio)
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
-                                    Utils.Debug($"ProcessAudioDataAsync: Successfully sent {readBuffer.Length} samples to FFI");
+                                    Utils.Debug($"ProcessAudioDataAsync: Successfully sent {readBuffer.Length} samples to FFI ({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
                                 }
                                 else
                                 {
-                                    Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch: " +
+                                    Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch for this source: " +
                                               $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
                                               $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
                                 }
