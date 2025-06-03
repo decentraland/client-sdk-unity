@@ -1,4 +1,7 @@
 using System;
+using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
@@ -12,10 +15,32 @@ namespace LiveKit
         private const float S16MinValue = -32768f;
         private const float S16ScaleFactor = 32768f;
 
+        private struct AudioBuffer
+        {
+            public short[] Data;
+            public int Length;
+            public int Channels;
+            public int SampleRate;
+            public volatile bool HasData;
+            
+            public void Reset()
+            {
+                HasData = false;
+                Length = 0;
+                Channels = 0;
+                SampleRate = 0;
+            }
+        }
+
         private AudioSource _audioSource;
         private IAudioFilter _audioFilter;
-        private short[] _audioBuffer;
-        private readonly object _lockObject = new();
+        private AudioBuffer[] _buffers = new AudioBuffer[2];
+        private volatile int _writeIndex = 0;
+        private volatile int _readIndex = 1;
+        private readonly object _swapLock = new();
+        private readonly SemaphoreSlim _dataAvailable = new(0, 1);
+        private CancellationTokenSource _cancellationTokenSource;
+        private Task _backgroundTask;
         private bool _isRunning;
         private readonly uint _configuredSampleRate;
         private readonly uint _configuredChannels;
@@ -25,13 +50,15 @@ namespace LiveKit
 
         public bool IsRunning => _isRunning;
 
-        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null)
+        public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, AudioProcessingOptions? options = null)
         {
             if (audioSource == null)
             {
                 Utils.Error("RtcAudioSource - AudioSource is null");
                 throw new ArgumentException("AudioSource must be valid");
             }
+
+            var audioOptions = options ?? AudioProcessingOptions.Default;
 
             var actualSampleRate = (uint)AudioSettings.outputSampleRate;
             
@@ -62,9 +89,9 @@ namespace LiveKit
             
             newAudioSource.Options = new AudioSourceOptions
             {
-                EchoCancellation = true,
-                NoiseSuppression = true,
-                AutoGainControl = true
+                EchoCancellation = audioOptions.EchoCancellation,
+                NoiseSuppression = audioOptions.NoiseSuppression,
+                AutoGainControl = audioOptions.AutoGainControl
             };
             
             newAudioSource.EnableQueue = true;
@@ -86,7 +113,7 @@ namespace LiveKit
         /// </summary>
         public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, AudioProcessingOptions.Default);
         }
 
         /// <summary>
@@ -95,7 +122,7 @@ namespace LiveKit
         /// </summary>
         public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, AudioProcessingOptions.HighQuality);
         }
 
         public void Start()
@@ -106,12 +133,25 @@ namespace LiveKit
                 return;
             }
             
-            Stop();
+            Stop(); // Ensure clean state
             if (_audioFilter?.IsValid != true || !_audioSource) 
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
+
+            // Initialize double buffering
+            _buffers[0].Reset();
+            _buffers[1].Reset();
+            _writeIndex = 0;
+            _readIndex = 1;
+            
+            // Start background processing task with proper disposal
+            _cancellationTokenSource?.Dispose(); // Clean up previous if any
+            _cancellationTokenSource = new CancellationTokenSource();
+            
+            _backgroundTask?.Dispose(); // Clean up previous task if any
+            _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
 
             _isRunning = true;
             _audioFilter.AudioRead += OnAudioRead;
@@ -122,10 +162,43 @@ namespace LiveKit
         {
             if (_disposed) return;
             
+            _isRunning = false;
+            
             if (_audioFilter?.IsValid == true) _audioFilter.AudioRead -= OnAudioRead;
             if (_audioSource) _audioSource.Stop();
 
-            _isRunning = false;
+            // Stop background processing gracefully
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Cancel();
+                
+                if (_backgroundTask != null && !_backgroundTask.IsCompleted)
+                {
+                    try
+                    {
+                        _backgroundTask.Wait(1000); // Wait up to 1 second for clean shutdown
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancelling
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                    {
+                        // Also expected when cancelling
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.Error($"Error stopping background audio processing: {ex.Message}");
+                    }
+                }
+                
+                // Proper disposal order: task first, then cancellation token
+                _backgroundTask?.Dispose();
+                _backgroundTask = null;
+                
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
+            }
         }
 
         public void Dispose()
@@ -144,7 +217,10 @@ namespace LiveKit
                     
                     _audioSource = null;
                     _audioFilter = null;
-                    _audioBuffer = null;
+                    
+                    _buffers[0].Reset();
+                    _buffers[1].Reset();
+                    _dataAvailable?.Dispose();
                 }
                 
                 Handle?.Dispose();
@@ -161,22 +237,184 @@ namespace LiveKit
         {
             if (!_isRunning || data == null || data.Length == 0) return;
 
-            lock (_lockObject)
+            // Audio thread - lock-free processing
+            var writeBuffer = _buffers[_writeIndex];
+            
+            if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
-                // Recreate buffer only when size changes
-                if (_audioBuffer == null || _audioBuffer.Length != data.Length)
-                {
-                    _audioBuffer = new short[data.Length];
-                }
+                writeBuffer.Data = new short[data.Length];
+            }
+            
+            ConvertFloatToShort(data, writeBuffer.Data);
+            
+            writeBuffer.Length = data.Length;
+            writeBuffer.Channels = channels;
+            writeBuffer.SampleRate = sampleRate;
+            writeBuffer.HasData = true; // This must be set last for thread safety
+            
+            _buffers[_writeIndex] = writeBuffer;
+            
+            TrySwapBuffers();
+        }
 
-                // Convert float samples to 16-bit PCM
-                for (int i = 0; i < data.Length; i++)
+        private static void ConvertFloatToShort(float[] input, short[] output)
+        {
+            if (Vector.IsHardwareAccelerated && input.Length >= Vector<float>.Count)
+            {
+                var scaleVector = new Vector<float>(S16ScaleFactor);
+                var minVector = new Vector<float>(S16MinValue);
+                var maxVector = new Vector<float>(S16MaxValue);
+                var halfVector = new Vector<float>(0.5f);
+                
+                int vectorLength = Vector<float>.Count;
+                int vectorizedLength = input.Length - (input.Length % vectorLength);
+                
+                for (int i = 0; i < vectorizedLength; i += vectorLength)
                 {
-                    float sample = data[i] * S16ScaleFactor;
-                    _audioBuffer[i] = (short)Math.Clamp(sample + (sample >= 0 ? 0.5f : -0.5f), S16MinValue, S16MaxValue);
+                    var floatVector = new Vector<float>(input, i);
+                    var scaledVector = floatVector * scaleVector;
+                    var roundingVector = Vector.ConditionalSelect(
+                        Vector.GreaterThanOrEqual(scaledVector, Vector<float>.Zero),
+                        halfVector,
+                        -halfVector);
+                    var roundedVector = scaledVector + roundingVector;
+                    var clampedVector = Vector.Max(Vector.Min(roundedVector, maxVector), minVector);
+                    
+                    for (int j = 0; j < vectorLength; j++)
+                    {
+                        output[i + j] = (short)clampedVector[j];
+                    }
                 }
+                
+                // Handle remaining samples using scalar conversion
+                ConvertFloatToShortScalar(input, output, vectorizedLength, input.Length);
+            }
+            else
+            {
+                // Fallback to scalar processing for entire array
+                ConvertFloatToShortScalar(input, output, 0, input.Length);
+            }
+        }
 
-                SendAudioData(_audioBuffer, channels, sampleRate);
+        private static void ConvertFloatToShortScalar(float[] input, short[] output, int start, int end)
+        {
+            for (int i = start; i < end; i++)
+            {
+                float sample = input[i] * S16ScaleFactor;
+                output[i] = (short)Math.Clamp(sample + (sample >= 0 ? 0.5f : -0.5f), S16MinValue, S16MaxValue);
+            }
+        }
+
+        private void TrySwapBuffers()
+        {
+            // Non-blocking attempt to swap buffers
+            if (Monitor.TryEnter(_swapLock, 0))
+            {
+                try
+                {
+                    if (_isRunning && !_disposed)
+                    {
+                        var oldWrite = _writeIndex;
+                        var oldRead = _readIndex;
+                        _writeIndex = oldRead;
+                        _readIndex = oldWrite;
+                        
+                        // Signal background thread that new data is available
+                        try
+                        {
+                            _dataAvailable?.Release();
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // Can happen during shutdown, ignore
+                        }
+                        catch (SemaphoreFullException)
+                        {
+                            // Background thread hasn't processed previous data yet, skip this frame
+                            // This is better than blocking the audio thread
+                        }
+                    }
+                }
+                finally
+                {
+                    Monitor.Exit(_swapLock);
+                }
+            }
+            // If can't get lock immediately, skip this frame (better than blocking audio thread)
+        }
+
+        private async Task ProcessAudioDataAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                Utils.Debug("Background audio processing started");
+                
+                while (!cancellationToken.IsCancellationRequested && !_disposed)
+                {
+                    try
+                    {
+                        // Wait for new audio data to be available
+                        await _dataAvailable.WaitAsync(cancellationToken);
+                        
+                        if (cancellationToken.IsCancellationRequested || _disposed)
+                            break;
+                            
+                        // Process available data
+                        var readBuffer = _buffers[_readIndex];
+                        if (readBuffer.HasData)
+                        {
+                            try
+                            {
+                                // Validate buffer format matches configuration
+                                if (readBuffer.SampleRate == _configuredSampleRate && 
+                                    readBuffer.Channels == _configuredChannels)
+                                {
+                                    // Send data on background thread (can be slow without affecting audio)
+                                    SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
+                                }
+                                else
+                                {
+                                    Utils.Error($"Audio format mismatch in background thread: " +
+                                              $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
+                                              $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Utils.Error($"Error processing audio data: {ex.Message}");
+                            }
+                            finally
+                            {
+                                // Mark buffer as processed
+                                lock (_swapLock)
+                                {
+                                    if (_readIndex < _buffers.Length && _buffers != null)
+                                    {
+                                        _buffers[_readIndex].HasData = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // SemaphoreSlim was disposed, time to exit
+                        break;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Cancellation requested, exit gracefully
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Utils.Error($"Unexpected error in background audio processing: {ex.Message}");
+            }
+            finally
+            {
+                Utils.Debug("Background audio processing stopped");
             }
         }
 
@@ -185,20 +423,6 @@ namespace LiveKit
             try
             {
                 uint samplesPerChannel = (uint)(audioData.Length / channels);
-
-                // Validate that the frame format matches what we configured the source for
-                if (sampleRate != _configuredSampleRate)
-                {
-                    Utils.Error($"Sample rate mismatch! Expected {_configuredSampleRate}Hz, got {sampleRate}Hz. " +
-                              "Audio data must be resampled to Unity's format before sending to LiveKit.");
-                    return;
-                }
-
-                if (channels != _configuredChannels)
-                {
-                    Utils.Error($"Channel count mismatch! Expected {_configuredChannels} channels, got {channels} channels.");
-                    return;
-                }
 
                 unsafe
                 {
