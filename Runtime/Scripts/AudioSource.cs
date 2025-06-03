@@ -64,26 +64,23 @@ namespace LiveKit
         /// <summary>
         /// Creates an RtcAudioSource optimized for voice chat (mono, 1 channel).
         /// Voice chat doesn't benefit from stereo and mono reduces bandwidth usage.
-        /// Uses the microphone's actual sample rate.
         /// </summary>
-        public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter)
+        public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, options: AudioProcessingOptions.Default);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.Default);
         }
 
         /// <summary>
         /// Creates an RtcAudioSource for high-quality audio (stereo, 2 channels).
         /// Suitable for music, screen share audio, or other high-fidelity audio content.
-        /// Uses the audio source's actual sample rate.
         /// </summary>
-        public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter)
+        public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, options: AudioProcessingOptions.HighQuality);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, forceSampleRate: sampleRate, options: AudioProcessingOptions.HighQuality);
         }
 
         /// <summary>
-        /// Creates an RtcAudioSource with full custom configuration including sample rate override.
-        /// Only use this if you need to override the detected sample rate for special use cases.
+        /// Creates an RtcAudioSource with full custom configuration.
         /// </summary>
         public static RtcAudioSource CreateCustom(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels, AudioProcessingOptions? options = null)
         {
