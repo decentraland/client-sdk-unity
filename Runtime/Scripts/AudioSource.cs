@@ -235,7 +235,14 @@ namespace LiveKit
 
         private void OnAudioRead(float[] data, int channels, int sampleRate)
         {
-            if (!_isRunning || data == null || data.Length == 0) return;
+            if (!_isRunning || data == null || data.Length == 0) 
+            {
+                if (data == null || data.Length == 0)
+                    Utils.Debug($"OnAudioRead: Invalid data - length: {data?.Length ?? -1}");
+                return;
+            }
+
+            Utils.Debug($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
 
             // Audio thread - lock-free processing
             var writeBuffer = _buffers[_writeIndex];
@@ -243,6 +250,7 @@ namespace LiveKit
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
                 writeBuffer.Data = new short[data.Length];
+                Utils.Debug($"OnAudioRead: Allocated new buffer with {data.Length} samples");
             }
             
             ConvertFloatToShort(data, writeBuffer.Data);
@@ -319,19 +327,24 @@ namespace LiveKit
                         _writeIndex = oldRead;
                         _readIndex = oldWrite;
                         
+                        Utils.Debug($"TrySwapBuffers: Successfully swapped buffers (write: {oldWrite}->{_writeIndex}, read: {oldRead}->{_readIndex})");
+                        
                         // Signal background thread that new data is available
                         try
                         {
                             _dataAvailable?.Release();
+                            Utils.Debug("TrySwapBuffers: Signaled background thread - new data available");
                         }
                         catch (ObjectDisposedException)
                         {
                             // Can happen during shutdown, ignore
+                            Utils.Debug("TrySwapBuffers: SemaphoreSlim disposed during release");
                         }
                         catch (SemaphoreFullException)
                         {
                             // Background thread hasn't processed previous data yet, skip this frame
                             // This is better than blocking the audio thread
+                            Utils.Debug("TrySwapBuffers: FRAME DROPPED - Background thread busy, semaphore full");
                         }
                     }
                 }
@@ -340,7 +353,11 @@ namespace LiveKit
                     Monitor.Exit(_swapLock);
                 }
             }
-            // If can't get lock immediately, skip this frame (better than blocking audio thread)
+            else
+            {
+                // If can't get lock immediately, skip this frame (better than blocking audio thread)
+                Utils.Debug("TrySwapBuffers: FRAME DROPPED - Could not acquire lock immediately");
+            }
         }
 
         private async Task ProcessAudioDataAsync(CancellationToken cancellationToken)
@@ -363,6 +380,8 @@ namespace LiveKit
                         var readBuffer = _buffers[_readIndex];
                         if (readBuffer.HasData)
                         {
+                            Utils.Debug($"ProcessAudioDataAsync: Processing buffer with {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz");
+                            
                             try
                             {
                                 // Validate buffer format matches configuration
@@ -371,17 +390,18 @@ namespace LiveKit
                                 {
                                     // Send data on background thread (can be slow without affecting audio)
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
+                                    Utils.Debug($"ProcessAudioDataAsync: Successfully sent {readBuffer.Length} samples to FFI");
                                 }
                                 else
                                 {
-                                    Utils.Error($"Audio format mismatch in background thread: " +
+                                    Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch: " +
                                               $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
                                               $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
                                 }
                             }
                             catch (Exception ex)
                             {
-                                Utils.Error($"Error processing audio data: {ex.Message}");
+                                Utils.Error($"ProcessAudioDataAsync: Error processing audio data: {ex.Message}");
                             }
                             finally
                             {
@@ -391,9 +411,14 @@ namespace LiveKit
                                     if (_readIndex < _buffers.Length && _buffers != null)
                                     {
                                         _buffers[_readIndex].HasData = false;
+                                        Utils.Debug($"ProcessAudioDataAsync: Buffer {_readIndex} marked as processed");
                                     }
                                 }
                             }
+                        }
+                        else
+                        {
+                            Utils.Debug("ProcessAudioDataAsync: Signaled but no data available in read buffer");
                         }
                     }
                     catch (ObjectDisposedException)
