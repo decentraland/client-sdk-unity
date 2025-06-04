@@ -44,6 +44,15 @@ namespace LiveKit.Internal
 
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;
+            
+            // Log buffer details for performance debugging
+            uint inputSamples = frame.samplesPerChannel * frame.numChannels;
+            uint inputBytes = inputSamples * sizeof(short);
+            float inputDurationMs = (float)frame.samplesPerChannel / frame.sampleRate * 1000f;
+            
+            Debug.LogError($"AudioResampler: Processing {inputBytes} bytes ({inputSamples} samples, {inputDurationMs:F1}ms audio) " +
+                     $"from {frame.numChannels}ch@{frame.sampleRate}Hz to {numChannels}ch@{sampleRate}Hz");
+            
             using var response = request.Send();
             FfiResponse res = response;
             var bufferInfo = res.RemixAndResample!.Buffer;
@@ -75,13 +84,18 @@ namespace LiveKit.Internal
                             ffiStopwatch.Stop();
                             overallStopwatch.Stop();
                             
-                            // Log detailed timing if operation takes more than 10ms (abnormal)
-                            if (overallStopwatch.ElapsedMilliseconds > 10)
+                            // Log detailed timing if operation takes more than 5ms (should be <1ms for real-time audio)
+                            if (overallStopwatch.ElapsedMilliseconds > 5)
                             {
+                                uint inputSamples = frame.samplesPerChannel * frame.numChannels;
+                                float inputDurationMs = (float)frame.samplesPerChannel / frame.sampleRate * 1000f;
+                                
                                 Debug.LogError($"AudioResampler.ThreadSafe: SLOW RESAMPLING - " +
                                           $"Total: {overallStopwatch.ElapsedMilliseconds}ms, " +
                                           $"Lock wait: {lockStopwatch.ElapsedMilliseconds}ms, " +
-                                          $"FFI call: {ffiStopwatch.ElapsedMilliseconds}ms");
+                                          $"FFI call: {ffiStopwatch.ElapsedMilliseconds}ms " +
+                                          $"(Processing {inputDurationMs:F1}ms of audio, {inputSamples} samples, " +
+                                          $"{frame.sampleRate}Hz→{sampleRate}Hz)");
                             }
                             
                             return result;
