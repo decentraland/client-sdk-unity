@@ -381,18 +381,17 @@ namespace LiveKit
             Dispose(false);
         }
 
-        private void OnAudioRead(float[] data, int channels, int sampleRate)
+        private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
             if (!_isRunning || data == null || data.Length == 0) 
             {
                 if (data == null || data.Length == 0)
-                    Debug.LogWarning($"OnAudioRead: Invalid data - length: {data?.Length ?? -1}");
+                    Debug.LogWarning($"OnAudioRead: Invalid data - length: {data.Length}");
                 return;
             }
 
             Debug.LogWarning($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
 
-            // Audio thread - lock-free processing
             var writeBuffer = _buffers[_writeIndex];
             
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
@@ -419,7 +418,7 @@ namespace LiveKit
             TrySwapBuffers();
         }
 
-        private static void ConvertFloatToShort(float[] input, short[] output)
+        private static void ConvertFloatToShort(Span<float> input, short[] output)
         {
             if (Vector.IsHardwareAccelerated && input.Length >= Vector<float>.Count)
             {
@@ -433,7 +432,7 @@ namespace LiveKit
                 
                 for (int i = 0; i < vectorizedLength; i += vectorLength)
                 {
-                    var floatVector = new Vector<float>(input, i);
+                    var floatVector = new Vector<float>(input.Slice(i, vectorLength));
                     var scaledVector = floatVector * scaleVector;
                     var roundingVector = Vector.ConditionalSelect(
                         Vector.GreaterThanOrEqual(scaledVector, Vector<float>.Zero),
@@ -458,7 +457,7 @@ namespace LiveKit
             }
         }
 
-        private static void ConvertFloatToShortScalar(float[] input, short[] output, int start, int end)
+        private static void ConvertFloatToShortScalar(Span<float> input, short[] output, int start, int end)
         {
             for (int i = start; i < end; i++)
             {

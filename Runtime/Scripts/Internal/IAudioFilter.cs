@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 
 namespace LiveKit
 {
@@ -10,7 +11,7 @@ namespace LiveKit
         /// <param name="data">Audio sample data</param>
         /// <param name="channels">Number of audio channels</param>
         /// <param name="sampleRate">Sample rate of the audio</param>
-        delegate void OnAudioDelegate(float[] data, int channels, int sampleRate);
+        delegate void OnAudioDelegate(Span<float> data, int channels, int sampleRate);
         
         /// <summary>
         /// Event called from the Unity audio thread when audio data is available
