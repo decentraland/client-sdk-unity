@@ -32,10 +32,10 @@ namespace LiveKit
         /// </summary>
         public static AudioProcessingOptions LowLatency => new()
         {
-            EchoCancellation = false,
-            NoiseSuppression = false,
-            AutoGainControl = false,
-            EnableQueue = false
+            EchoCancellation = true,
+            NoiseSuppression = true,
+            AutoGainControl = true,
+            EnableQueue = true
         };
 
         /// <summary>

@@ -146,7 +146,6 @@ namespace LiveKit
                 
                 _isRunning = true;
                 _audioFilter.AudioRead += OnAudioRead;
-                _audioSource.Play();
                 
                 Utils.Debug("RtcAudioSource.Start() - Resume completed with clean buffer state");
             }
@@ -170,7 +169,6 @@ namespace LiveKit
 
                 _isRunning = true;
                 _audioFilter.AudioRead += OnAudioRead;
-                _audioSource.Play();
             }
         }
 
@@ -181,7 +179,6 @@ namespace LiveKit
             _isRunning = false;
             
             if (_audioFilter?.IsValid == true) _audioFilter.AudioRead -= OnAudioRead;
-            if (_audioSource) _audioSource.Stop();
 
             StopBackgroundProcessing();
         }
@@ -389,11 +386,11 @@ namespace LiveKit
             if (!_isRunning || data == null || data.Length == 0) 
             {
                 if (data == null || data.Length == 0)
-                    Utils.Debug($"OnAudioRead: Invalid data - length: {data?.Length ?? -1}");
+                    Debug.LogWarning($"OnAudioRead: Invalid data - length: {data?.Length ?? -1}");
                 return;
             }
 
-            Utils.Debug($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
+            Debug.LogWarning($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
 
             // Audio thread - lock-free processing
             var writeBuffer = _buffers[_writeIndex];
@@ -401,7 +398,7 @@ namespace LiveKit
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
                 writeBuffer.Data = new short[data.Length];
-                Utils.Debug($"OnAudioRead: Allocated new buffer with {data.Length} samples");
+                Debug.LogWarning($"OnAudioRead: Allocated new buffer with {data.Length} samples");
             }
             
             ConvertFloatToShort(data, writeBuffer.Data);
@@ -410,6 +407,12 @@ namespace LiveKit
             writeBuffer.Channels = channels;
             writeBuffer.SampleRate = sampleRate;
             writeBuffer.HasData = true;
+            
+            // Log when Unity's rate differs from configured rate (for debugging)
+            if (sampleRate != _configuredSampleRate)
+            {
+                Debug.LogError($"OnAudioRead: Unity rate {sampleRate}Hz differs from configured {_configuredSampleRate}Hz - using configured rate");
+            }
             
             _buffers[_writeIndex] = writeBuffer;
             
