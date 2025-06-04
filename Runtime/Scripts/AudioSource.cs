@@ -95,28 +95,61 @@ namespace LiveKit
                 return;
             }
             
-            Stop();
-            
             if (_audioFilter?.IsValid != true || !_audioSource) 
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
-            _buffers[0].Reset();
-            _buffers[1].Reset();
-            _writeIndex = 0;
-            _readIndex = 1;
-            
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = new CancellationTokenSource();
-            
-            _backgroundTask?.Dispose();
-            _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
+            // If already running, no need to restart
+            if (_isRunning)
+            {
+                Utils.Debug("RtcAudioSource.Start() called but already running");
+                return;
+            }
 
-            _isRunning = true;
-            _audioFilter.AudioRead += OnAudioRead;
-            _audioSource.Play();
+            // Check if we can resume existing background infrastructure
+            bool canResume = _backgroundTask != null && 
+                           !_backgroundTask.IsCompleted && 
+                           _cancellationTokenSource != null && 
+                           !_cancellationTokenSource.Token.IsCancellationRequested;
+
+            if (canResume)
+            {
+                // Lightweight resume - just reset buffers and restart audio capture
+                Utils.Debug("RtcAudioSource.Start() - resuming with existing background task");
+                
+                _buffers[0].Reset();
+                _buffers[1].Reset();
+                _writeIndex = 0;
+                _readIndex = 1;
+                
+                _isRunning = true;
+                _audioFilter.AudioRead += OnAudioRead;
+                _audioSource.Play();
+            }
+            else
+            {
+                // Full initialization - clean up and restart everything
+                Utils.Debug("RtcAudioSource.Start() - full initialization");
+                
+                if (_backgroundTask != null || _cancellationTokenSource != null)
+                {
+                    StopBackgroundProcessing();
+                }
+
+                _buffers[0].Reset();
+                _buffers[1].Reset();
+                _writeIndex = 0;
+                _readIndex = 1;
+                
+                _cancellationTokenSource = new CancellationTokenSource();
+                _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
+
+                _isRunning = true;
+                _audioFilter.AudioRead += OnAudioRead;
+                _audioSource.Play();
+            }
         }
 
         public void Stop()
@@ -128,7 +161,11 @@ namespace LiveKit
             if (_audioFilter?.IsValid == true) _audioFilter.AudioRead -= OnAudioRead;
             if (_audioSource) _audioSource.Stop();
 
-            // Stop background processing gracefully
+            StopBackgroundProcessing();
+        }
+
+        private void StopBackgroundProcessing()
+        {
             if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 _cancellationTokenSource.Cancel();
@@ -137,7 +174,7 @@ namespace LiveKit
                 {
                     try
                     {
-                        _backgroundTask.Wait(1000); // Wait up to 1 second for clean shutdown
+                        _backgroundTask.Wait(1000);
                     }
                     catch (OperationCanceledException)
                     {
@@ -164,7 +201,7 @@ namespace LiveKit
         /// <summary>
         /// Reconfigures the RtcAudioSource with new audio components and settings.
         /// Useful for switching microphones or changing audio configuration without creating a new instance.
-        /// The audio source will be stopped and needs to be manually started again after reconfiguration.
+        /// The audio source will unsubscribe from the audio filter and needs to be manually started again after reconfiguration.
         /// </summary>
         /// <param name="audioSource">New AudioSource component</param>
         /// <param name="audioFilter">New IAudioFilter component</param>
@@ -310,7 +347,7 @@ namespace LiveKit
             writeBuffer.Length = data.Length;
             writeBuffer.Channels = channels;
             writeBuffer.SampleRate = sampleRate;
-            writeBuffer.HasData = true; // This must be set last for thread safety
+            writeBuffer.HasData = true;
             
             _buffers[_writeIndex] = writeBuffer;
             
@@ -390,7 +427,6 @@ namespace LiveKit
                         catch (ObjectDisposedException)
                         {
                             // Can happen during shutdown, ignore
-                            Utils.Debug("TrySwapBuffers: SemaphoreSlim disposed during release");
                         }
                         catch (SemaphoreFullException)
                         {
@@ -422,13 +458,11 @@ namespace LiveKit
                 {
                     try
                     {
-                        // Wait for new audio data to be available
                         await _dataAvailable.WaitAsync(cancellationToken);
                         
                         if (cancellationToken.IsCancellationRequested || _disposed)
                             break;
                             
-                        // Process available data
                         var readBuffer = _buffers[_readIndex];
                         if (readBuffer.HasData)
                         {
@@ -436,8 +470,6 @@ namespace LiveKit
                             
                             try
                             {
-                                // Validate that audio format matches this source's configuration
-                                // Each source maintains its own consistent sample rate
                                 if (readBuffer.SampleRate == _configuredSampleRate && 
                                     readBuffer.Channels == _configuredChannels)
                                 {
