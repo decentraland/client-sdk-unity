@@ -532,6 +532,9 @@ namespace LiveKit
                             
                             try
                             {
+                                // TEMPORARILY DISABLE format validation to test if this causes delays
+                                // TODO: Re-enable after testing
+                                /*
                                 // Validate that audio format matches this source's configuration
                                 // AND that we have a valid handle for sending
                                 if (Handle != null && 
@@ -553,6 +556,24 @@ namespace LiveKit
                                                   $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
                                                   $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
                                     }
+                                }
+                                */
+                                
+                                // TEST: Send audio regardless of format mismatch
+                                if (Handle != null)
+                                {
+                                    SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
+                                    Debug.LogError($"ProcessAudioDataAsync: Successfully sent {readBuffer.Length} samples to FFI ({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz) [Format validation disabled]");
+                                    
+                                    // Log format mismatches for debugging
+                                    if (readBuffer.SampleRate != _configuredSampleRate || readBuffer.Channels != _configuredChannels)
+                                    {
+                                        Debug.LogWarning($"AudioSource: Format mismatch - Configured: {_configuredSampleRate}Hz/{_configuredChannels}ch, Actual: {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
+                                    }
+                                }
+                                else
+                                {
+                                    Debug.LogError("ProcessAudioDataAsync: FRAME DROPPED - No valid handle (likely during reconfiguration)");
                                 }
                             }
                             catch (Exception ex)
