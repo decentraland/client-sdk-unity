@@ -40,7 +40,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 if (channels != _numChannels || sampleRate != _sampleRate || _tempBuffer == null || data.Length != _tempBuffer.Length)
                 {
-                    int size = (int)(channels * sampleRate * 0.2); //0.2 stands for 200 ms
+                    int size = (int)(channels * sampleRate * 0.05); // Reduced from 0.2 (200ms) to 0.05 (50ms) for lower latency
                     if (_buffer != null)
                     {
                         using var guard = _buffer.Lock();
