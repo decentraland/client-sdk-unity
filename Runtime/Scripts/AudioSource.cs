@@ -67,7 +67,7 @@ namespace LiveKit
         /// </summary>
         public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.Default);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
         }
 
         /// <summary>
@@ -77,6 +77,16 @@ namespace LiveKit
         public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
             return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, forceSampleRate: sampleRate, options: AudioProcessingOptions.HighQuality);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource optimized for ultra-low latency real-time communication.
+        /// Disables internal buffering and queue mode for minimum possible delay.
+        /// May cause audio glitches on slower devices or poor network conditions.
+        /// </summary>
+        public static RtcAudioSource CreateForLowLatency(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels = 1)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
         }
 
         /// <summary>
@@ -278,7 +288,7 @@ namespace LiveKit
                 AutoGainControl = audioOptions.AutoGainControl
             };
             
-            newAudioSource.EnableQueue = true;
+            newAudioSource.EnableQueue = audioOptions.EnableQueue;
 
             using var response = request.Send();
             FfiResponse res = response;
