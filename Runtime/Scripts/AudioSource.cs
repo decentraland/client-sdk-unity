@@ -185,12 +185,14 @@ namespace LiveKit
                 throw new ArgumentException("AudioSource must be valid");
             }
 
-            Stop();
-            Handle?.Dispose(); // Dispose old FFI handle
-
-            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
+            bool wasRunning = _isRunning;
+            _isRunning = false;
             
-            Utils.Debug($"RtcAudioSource reconfigured: {_configuredSampleRate}Hz, {_configuredChannels}ch");
+            if (_audioFilter?.IsValid == true) 
+                _audioFilter.AudioRead -= OnAudioRead;
+            
+            Handle?.Dispose();
+            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
         }
 
         private void ConfigureAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels, uint? forceSampleRate, AudioProcessingOptions? options)
