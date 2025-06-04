@@ -2,6 +2,7 @@ using System;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Streaming.Audio;
+using UnityEngine;
 
 namespace LiveKit.Internal
 {
@@ -58,11 +59,41 @@ namespace LiveKit.Internal
             /// </summary>
             public OwnedAudioFrame RemixAndResample(OwnedAudioFrame frame, uint numChannels, uint sampleRate)
             {
+                var overallStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var lockStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                
                 using (frame)
                 {
                     lock (this)
                     {
-                        return resampler.RemixAndResample(frame, numChannels, sampleRate);
+                        lockStopwatch.Stop();
+                        var ffiStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                        
+                        try
+                        {
+                            var result = resampler.RemixAndResample(frame, numChannels, sampleRate);
+                            ffiStopwatch.Stop();
+                            overallStopwatch.Stop();
+                            
+                            // Log detailed timing if operation takes more than 10ms (abnormal)
+                            if (overallStopwatch.ElapsedMilliseconds > 10)
+                            {
+                                Debug.LogError($"AudioResampler.ThreadSafe: SLOW RESAMPLING - " +
+                                          $"Total: {overallStopwatch.ElapsedMilliseconds}ms, " +
+                                          $"Lock wait: {lockStopwatch.ElapsedMilliseconds}ms, " +
+                                          $"FFI call: {ffiStopwatch.ElapsedMilliseconds}ms");
+                            }
+                            
+                            return result;
+                        }
+                        catch (Exception ex)
+                        {
+                            ffiStopwatch.Stop();
+                            overallStopwatch.Stop();
+                            Debug.LogError($"AudioResampler.ThreadSafe: FAILED after {overallStopwatch.ElapsedMilliseconds}ms " +
+                                      $"(Lock: {lockStopwatch.ElapsedMilliseconds}ms, FFI: {ffiStopwatch.ElapsedMilliseconds}ms) - Error: {ex.Message}");
+                            throw;
+                        }
                     }
                 }
             }

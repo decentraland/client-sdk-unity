@@ -25,7 +25,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 if (ownedAudioFrame.numChannels == numChannels && ownedAudioFrame.sampleRate == sampleRate)
                 {
                     // Direct copy - no resampling needed
-                    Utils.Error($"AudioRemixConveyor: Direct copy {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz");
+                    Debug.LogError($"AudioRemixConveyor: Direct copy {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz");
                     var data = ownedAudioFrame.AsSpan();
                     using var guard = outputBuffer.Lock();
                     guard.Value.Write(data);
@@ -34,12 +34,28 @@ namespace LiveKit.Rooms.Streaming.Audio
                 }
                 else
                 {
-                    // Resampling required - use FFI resampler
-                    Utils.Error($"AudioRemixConveyor: Resampling {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz");
-                    using var uFrame = resampler.RemixAndResample(ownedAudioFrame, numChannels, sampleRate);
-                    var data = uFrame.AsSpan();
-                    using var guard = outputBuffer.Lock();
-                    guard.Value.Write(data);
+                    // Resampling required - use FFI resampler with timing
+                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    
+                    Debug.LogError($"AudioRemixConveyor: RESAMPLING STARTING {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz");
+                    
+                    try
+                    {
+                        using var uFrame = resampler.RemixAndResample(ownedAudioFrame, numChannels, sampleRate);
+                        stopwatch.Stop();
+                        
+                        var data = uFrame.AsSpan();
+                        using var guard = outputBuffer.Lock();
+                        guard.Value.Write(data);
+                        
+                        Debug.LogError($"AudioRemixConveyor: RESAMPLING COMPLETED in {stopwatch.ElapsedMilliseconds}ms ({stopwatch.Elapsed.TotalSeconds:F3}s)");
+                    }
+                    catch (Exception ex)
+                    {
+                        stopwatch.Stop();
+                        Debug.LogError($"AudioRemixConveyor: RESAMPLING FAILED after {stopwatch.ElapsedMilliseconds}ms - Error: {ex.Message}");
+                        throw;
+                    }
                 }
             }
 
