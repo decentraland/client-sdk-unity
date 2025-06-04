@@ -129,14 +129,26 @@ namespace LiveKit
                 // Lightweight resume - just reset buffers and restart audio capture
                 Utils.Debug("RtcAudioSource.Start() - resuming with existing background task");
                 
-                _buffers[0].Reset();
-                _buffers[1].Reset();
-                _writeIndex = 0;
-                _readIndex = 1;
+                // Ensure clean buffer state before resuming
+                lock (_swapLock)
+                {
+                    _buffers[0].Reset();
+                    _buffers[1].Reset();
+                    _writeIndex = 0;
+                    _readIndex = 1;
+                    
+                    // Clear any pending semaphore signals
+                    while (_dataAvailable?.CurrentCount > 0)
+                    {
+                        try { _dataAvailable.Wait(0); } catch { break; }
+                    }
+                }
                 
                 _isRunning = true;
                 _audioFilter.AudioRead += OnAudioRead;
                 _audioSource.Play();
+                
+                Utils.Debug("RtcAudioSource.Start() - Resume completed with clean buffer state");
             }
             else
             {
@@ -232,14 +244,54 @@ namespace LiveKit
                 throw new ArgumentException("AudioSource must be valid");
             }
 
+            Utils.Debug("RtcAudioSource.Reconfigure - Starting reconfiguration");
+
             bool wasRunning = _isRunning;
-            _isRunning = false;
             
+            // Step 1: Stop audio input and background processing completely
+            _isRunning = false;
             if (_audioFilter?.IsValid == true) 
                 _audioFilter.AudioRead -= OnAudioRead;
             
-            Handle?.Dispose();
-            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
+            // Step 2: Stop background processing entirely for clean reconfiguration
+            Utils.Debug("RtcAudioSource.Reconfigure - Stopping background processing");
+            StopBackgroundProcessing();
+            
+            // Step 3: Clear and reset all buffer state
+            lock (_swapLock)
+            {
+                _buffers[0].Reset();
+                _buffers[1].Reset();
+                _writeIndex = 0;
+                _readIndex = 1;
+                
+                // Clear the semaphore in case there are pending signals
+                while (_dataAvailable?.CurrentCount > 0)
+                {
+                    try { _dataAvailable.Wait(0); } catch { break; }
+                }
+            }
+            
+            Utils.Debug("RtcAudioSource.Reconfigure - Buffers cleared and reset");
+            
+            // Step 4: Dispose old FFI handle and create new one
+            var oldHandle = Handle;
+            Handle = null; // Clear handle reference first
+            
+            try
+            {
+                ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
+                Utils.Debug($"RtcAudioSource.Reconfigure - New configuration applied: {_configuredSampleRate}Hz, {_configuredChannels}ch");
+            }
+            finally
+            {
+                // Dispose old handle after new one is created
+                oldHandle?.Dispose();
+                Utils.Debug("RtcAudioSource.Reconfigure - Old FFI handle disposed");
+            }
+            
+            Utils.Debug($"RtcAudioSource.Reconfigure - Completed (was running: {wasRunning})");
+            // Note: Background task will be recreated on next Start() call
         }
 
         private void ConfigureAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels, uint? forceSampleRate, AudioProcessingOptions? options)
@@ -480,7 +532,10 @@ namespace LiveKit
                             
                             try
                             {
-                                if (readBuffer.SampleRate == _configuredSampleRate && 
+                                // Validate that audio format matches this source's configuration
+                                // AND that we have a valid handle for sending
+                                if (Handle != null && 
+                                    readBuffer.SampleRate == _configuredSampleRate && 
                                     readBuffer.Channels == _configuredChannels)
                                 {
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
@@ -488,9 +543,16 @@ namespace LiveKit
                                 }
                                 else
                                 {
-                                    Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch for this source: " +
-                                              $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
-                                              $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
+                                    if (Handle == null)
+                                    {
+                                        Utils.Debug("ProcessAudioDataAsync: FRAME DROPPED - No valid handle (likely during reconfiguration)");
+                                    }
+                                    else
+                                    {
+                                        Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch for this source: " +
+                                                  $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
+                                                  $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
+                                    }
                                 }
                             }
                             catch (Exception ex)
@@ -539,6 +601,14 @@ namespace LiveKit
 
         private void SendAudioData(short[] audioData, int channels, int sampleRate)
         {
+            // Check if handle is valid before attempting to send
+            var currentHandle = Handle;
+            if (currentHandle == null)
+            {
+                Utils.Debug("SendAudioData: Handle is null, skipping frame (likely during reconfiguration)");
+                return;
+            }
+
             try
             {
                 uint samplesPerChannel = (uint)(audioData.Length / channels);
@@ -551,7 +621,7 @@ namespace LiveKit
                         using var audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
 
                         var captureFrame = request.request;
-                        captureFrame.SourceHandle = (ulong)Handle.DangerousGetHandle();
+                        captureFrame.SourceHandle = (ulong)currentHandle.DangerousGetHandle();
                         captureFrame.Buffer = audioFrameBufferInfo;
                         captureFrame.Buffer.DataPtr = (ulong)dataPtr;
                         captureFrame.Buffer.NumChannels = (uint)channels;
@@ -566,6 +636,10 @@ namespace LiveKit
                         captureFrame.Buffer.SamplesPerChannel = 0;
                     }
                 }
+            }
+            catch (ObjectDisposedException)
+            {
+                Utils.Debug("SendAudioData: Handle was disposed during send (expected during reconfiguration)");
             }
             catch (Exception e) 
             { 
