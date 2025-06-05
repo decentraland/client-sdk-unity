@@ -15,6 +15,10 @@ namespace LiveKit
         private const float S16MinValue = -32768f;
         private const float S16ScaleFactor = 32768f;
 
+        // PITCH SHIFT TRACE: Static timing tracking
+        private static DateTime _lastAudioFrameTime = DateTime.MinValue;
+        private static int _frameCount = 0;
+
         private struct AudioBuffer
         {
             public short[] Data;
@@ -294,7 +298,12 @@ namespace LiveKit
                 return;
             }
 
-            Debug.LogError($"OnAudioRead: BUFFER SIZE DEBUG - Unity requests {data.Length} samples, {channels}ch, {sampleRate}Hz");
+            // PITCH SHIFT TRACE: Calculate timing metrics (thread-safe)
+            var currentTime = DateTime.UtcNow;
+            var expectedDurationMs = (float)data.Length / channels / sampleRate * 1000f;
+            
+            Debug.LogError($"OnAudioRead: PITCH TRACE - Unity frame: {data.Length} samples, {channels}ch, {sampleRate}Hz, " +
+                          $"expected duration: {expectedDurationMs:F2}ms, timestamp: {currentTime:mm:ss.fff}");
 
             var writeBuffer = _buffers[_writeIndex];
             
@@ -413,9 +422,7 @@ namespace LiveKit
         private async Task ProcessAudioDataAsync(CancellationToken cancellationToken)
         {
             try
-            {
-                Utils.Debug("Background audio processing started");
-                
+            {                
                 while (!cancellationToken.IsCancellationRequested && !_disposed)
                 {
                     try
@@ -428,7 +435,11 @@ namespace LiveKit
                         var readBuffer = _buffers[_readIndex];
                         if (readBuffer.HasData)
                         {
-                            Debug.LogError($"ProcessAudioDataAsync: BUFFER SIZE - Processing {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz");
+                            // PITCH SHIFT TRACE: Track frame info
+                            var expectedDurationMs = (float)readBuffer.Length / readBuffer.Channels / readBuffer.SampleRate * 1000f;
+                            
+                            Debug.LogError($"ProcessAudioDataAsync: PITCH TRACE - Processing {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz, " +
+                                          $"expected duration: {expectedDurationMs:F2}ms");
                             
                             try
                             {
@@ -437,7 +448,9 @@ namespace LiveKit
                                     readBuffer.Channels == _configuredChannels)
                                 {
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
-                                    Debug.LogError($"ProcessAudioDataAsync: SENT TO FFI - {readBuffer.Length} samples ({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
+                                    
+                                    Debug.LogError($"ProcessAudioDataAsync: PITCH TRACE - SENT TO FFI - {readBuffer.Length} samples " +
+                                                  $"({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
                                 }
                                 else
                                 {
