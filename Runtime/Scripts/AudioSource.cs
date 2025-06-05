@@ -169,7 +169,7 @@ namespace LiveKit
             // If already running, stop first to ensure clean state
             if (_isRunning)
             {
-                Utils.Debug("RtcAudioSource.Start() called while running - stopping first");
+                Debug.LogError("RtcAudioSource.Start() called while running - stopping first");
                 Stop();
             }
 
@@ -190,7 +190,7 @@ namespace LiveKit
             _isRunning = true;
             _audioFilter.AudioRead += OnAudioRead;
             
-            Utils.Debug("RtcAudioSource.Start() - Started with fresh state");
+            Debug.LogError("RtcAudioSource.Start() - BUFFER SIZE DEBUGGING: Started with fresh state");
         }
 
         public void Stop()
@@ -294,14 +294,14 @@ namespace LiveKit
                 return;
             }
 
-            Utils.Debug($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
+            Debug.LogError($"OnAudioRead: BUFFER SIZE DEBUG - Unity requests {data.Length} samples, {channels}ch, {sampleRate}Hz");
 
             var writeBuffer = _buffers[_writeIndex];
             
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
                 writeBuffer.Data = new short[data.Length];
-                Utils.Debug($"OnAudioRead: Allocated new buffer with {data.Length} samples");
+                Debug.LogError($"OnAudioRead: Allocated new buffer with {data.Length} samples");
             }
             
             ConvertFloatToShort(data, writeBuffer.Data);
@@ -428,7 +428,7 @@ namespace LiveKit
                         var readBuffer = _buffers[_readIndex];
                         if (readBuffer.HasData)
                         {
-                            Utils.Debug($"ProcessAudioDataAsync: Processing buffer with {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz");
+                            Debug.LogError($"ProcessAudioDataAsync: BUFFER SIZE - Processing {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz");
                             
                             try
                             {
@@ -437,7 +437,7 @@ namespace LiveKit
                                     readBuffer.Channels == _configuredChannels)
                                 {
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
-                                    Utils.Debug($"ProcessAudioDataAsync: Successfully sent {readBuffer.Length} samples to FFI ({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
+                                    Debug.LogError($"ProcessAudioDataAsync: SENT TO FFI - {readBuffer.Length} samples ({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
                                 }
                                 else
                                 {
