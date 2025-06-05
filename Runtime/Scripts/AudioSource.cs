@@ -42,13 +42,15 @@ namespace LiveKit
         private CancellationTokenSource? _cancellationTokenSource;
         private Task _backgroundTask;
         private bool _isRunning;
-        private uint _configuredSampleRate;
-        private uint _configuredChannels;
+        private readonly uint _configuredSampleRate;
+        private readonly uint _configuredChannels;
         private bool _disposed;
 
         internal FfiHandle Handle { get; private set; }
 
         public bool IsRunning => _isRunning;
+        public uint ConfiguredSampleRate => _configuredSampleRate;
+        public uint ConfiguredChannels => _configuredChannels;
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, uint? forceSampleRate = null, AudioProcessingOptions? options = null)
         {
@@ -58,241 +60,6 @@ namespace LiveKit
                 throw new ArgumentException("AudioSource must be valid");
             }
 
-            ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
-        }
-
-        /// <summary>
-        /// Creates an RtcAudioSource optimized for voice chat (mono, 1 channel).
-        /// Voice chat doesn't benefit from stereo and mono reduces bandwidth usage.
-        /// </summary>
-        public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
-        {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
-        }
-
-        /// <summary>
-        /// Creates an RtcAudioSource for high-quality audio (stereo, 2 channels).
-        /// Suitable for music, screen share audio, or other high-fidelity audio content.
-        /// </summary>
-        public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
-        {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, forceSampleRate: sampleRate, options: AudioProcessingOptions.HighQuality);
-        }
-
-        /// <summary>
-        /// Creates an RtcAudioSource optimized for ultra-low latency real-time communication.
-        /// Disables internal buffering and queue mode for minimum possible delay.
-        /// May cause audio glitches on slower devices or poor network conditions.
-        /// </summary>
-        public static RtcAudioSource CreateForLowLatency(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels = 1)
-        {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
-        }
-
-        /// <summary>
-        /// Creates an RtcAudioSource with full custom configuration.
-        /// </summary>
-        public static RtcAudioSource CreateCustom(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels, AudioProcessingOptions? options = null)
-        {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: options ?? AudioProcessingOptions.Default);
-        }
-
-        public void Start()
-        {
-            if (_disposed) 
-            {
-                Utils.Error("Cannot start RtcAudioSource: object has been disposed");
-                return;
-            }
-            
-            if (_audioFilter?.IsValid != true || !_audioSource) 
-            {
-                Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
-                return;
-            }
-
-            // If already running, no need to restart
-            if (_isRunning)
-            {
-                Utils.Debug("RtcAudioSource.Start() called but already running");
-                return;
-            }
-
-            // Check if we can resume existing background infrastructure
-            bool canResume = _backgroundTask != null && 
-                           !_backgroundTask.IsCompleted && 
-                           _cancellationTokenSource != null && 
-                           !_cancellationTokenSource.Token.IsCancellationRequested;
-
-            if (canResume)
-            {
-                // Lightweight resume - just reset buffers and restart audio capture
-                Utils.Debug("RtcAudioSource.Start() - resuming with existing background task");
-                
-                // Ensure clean buffer state before resuming
-                lock (_swapLock)
-                {
-                    _buffers[0].Reset();
-                    _buffers[1].Reset();
-                    _writeIndex = 0;
-                    _readIndex = 1;
-                    
-                    // Clear any pending semaphore signals
-                    while (_dataAvailable?.CurrentCount > 0)
-                    {
-                        try { _dataAvailable.Wait(0); } catch { break; }
-                    }
-                }
-                
-                _isRunning = true;
-                _audioFilter.AudioRead += OnAudioRead;
-                
-                Utils.Debug("RtcAudioSource.Start() - Resume completed with clean buffer state");
-            }
-            else
-            {
-                // Full initialization - clean up and restart everything
-                Utils.Debug("RtcAudioSource.Start() - full initialization");
-                
-                if (_backgroundTask != null || _cancellationTokenSource != null)
-                {
-                    StopBackgroundProcessing();
-                }
-
-                _buffers[0].Reset();
-                _buffers[1].Reset();
-                _writeIndex = 0;
-                _readIndex = 1;
-                
-                _cancellationTokenSource = new CancellationTokenSource();
-                _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
-
-                _isRunning = true;
-                _audioFilter.AudioRead += OnAudioRead;
-            }
-        }
-
-        public void Stop()
-        {
-            if (_disposed) return;
-            
-            _isRunning = false;
-            
-            if (_audioFilter?.IsValid == true) _audioFilter.AudioRead -= OnAudioRead;
-
-            StopBackgroundProcessing();
-        }
-
-        private void StopBackgroundProcessing()
-        {
-            if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                _cancellationTokenSource.Cancel();
-                
-                if (_backgroundTask != null && !_backgroundTask.IsCompleted)
-                {
-                    try
-                    {
-                        _backgroundTask.Wait(1000);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Expected when cancelling
-                    }
-                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
-                    {
-                        // Also expected when cancelling
-                    }
-                    catch (Exception ex)
-                    {
-                        Utils.Error($"Error stopping background audio processing: {ex.Message}");
-                    }
-                }
-                
-                _backgroundTask?.Dispose();
-                _backgroundTask = null;
-                
-                _cancellationTokenSource?.Dispose();
-                _cancellationTokenSource = null;
-            }
-        }
-
-        /// <summary>
-        /// Reconfigures the RtcAudioSource with new audio components and settings.
-        /// Useful for switching microphones or changing audio configuration without creating a new instance.
-        /// The audio source will unsubscribe from the audio filter and needs to be manually started again after reconfiguration.
-        /// </summary>
-        /// <param name="audioSource">New AudioSource component</param>
-        /// <param name="audioFilter">New IAudioFilter component</param>
-        /// <param name="forceChannels">Optional: Override channel count (null = auto-detect)</param>
-        /// <param name="forceSampleRate">Optional: Override sample rate (null = auto-detect)</param>
-        /// <param name="options">Optional: Audio processing options</param>
-        public void Reconfigure(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, uint? forceSampleRate = null, AudioProcessingOptions? options = null)
-        {
-            if (_disposed) 
-            {
-                Utils.Error("Cannot reconfigure RtcAudioSource: object has been disposed");
-                return;
-            }
-
-            if (audioSource == null)
-            {
-                Utils.Error("RtcAudioSource.Reconfigure - AudioSource is null");
-                throw new ArgumentException("AudioSource must be valid");
-            }
-
-            Utils.Debug("RtcAudioSource.Reconfigure - Starting reconfiguration");
-
-            bool wasRunning = _isRunning;
-            
-            // Step 1: Stop audio input and background processing completely
-            _isRunning = false;
-            if (_audioFilter?.IsValid == true) 
-                _audioFilter.AudioRead -= OnAudioRead;
-            
-            // Step 2: Stop background processing entirely for clean reconfiguration
-            Utils.Debug("RtcAudioSource.Reconfigure - Stopping background processing");
-            StopBackgroundProcessing();
-            
-            // Step 3: Clear and reset all buffer state
-            lock (_swapLock)
-            {
-                _buffers[0].Reset();
-                _buffers[1].Reset();
-                _writeIndex = 0;
-                _readIndex = 1;
-                
-                // Clear the semaphore in case there are pending signals
-                while (_dataAvailable?.CurrentCount > 0)
-                {
-                    try { _dataAvailable.Wait(0); } catch { break; }
-                }
-            }
-            
-            Utils.Debug("RtcAudioSource.Reconfigure - Buffers cleared and reset");
-            
-            // Step 4: Dispose old FFI handle and create new one
-            var oldHandle = Handle;
-            Handle = null; // Clear handle reference first
-            
-            try
-            {
-                ConfigureAudioSource(audioSource, audioFilter, forceChannels, forceSampleRate, options);
-                Utils.Debug($"RtcAudioSource.Reconfigure - New configuration applied: {_configuredSampleRate}Hz, {_configuredChannels}ch");
-            }
-            finally
-            {
-                // Dispose old handle after new one is created
-                oldHandle?.Dispose();
-                Utils.Debug("RtcAudioSource.Reconfigure - Old FFI handle disposed");
-            }
-            
-            Utils.Debug($"RtcAudioSource.Reconfigure - Completed (was running: {wasRunning})");
-            // Note: Background task will be recreated on next Start() call
-        }
-
-        private void ConfigureAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels, uint? forceSampleRate, AudioProcessingOptions? options)
-        {
             var audioOptions = options ?? AudioProcessingOptions.Default;
 
             uint actualSampleRate;
@@ -349,6 +116,133 @@ namespace LiveKit
             _configuredChannels = actualChannels;
         }
 
+        /// <summary>
+        /// Creates an RtcAudioSource optimized for voice chat (mono, 1 channel).
+        /// Voice chat doesn't benefit from stereo and mono reduces bandwidth usage.
+        /// </summary>
+        public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource for high-quality audio (stereo, 2 channels).
+        /// Suitable for music, screen share audio, or other high-fidelity audio content.
+        /// </summary>
+        public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, forceSampleRate: sampleRate, options: AudioProcessingOptions.HighQuality);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource optimized for ultra-low latency real-time communication.
+        /// Disables internal buffering and queue mode for minimum possible delay.
+        /// May cause audio glitches on slower devices or poor network conditions.
+        /// </summary>
+        public static RtcAudioSource CreateForLowLatency(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels = 1)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
+        }
+
+        /// <summary>
+        /// Creates an RtcAudioSource with full custom configuration.
+        /// </summary>
+        public static RtcAudioSource CreateCustom(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels, AudioProcessingOptions? options = null)
+        {
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: options ?? AudioProcessingOptions.Default);
+        }
+
+        public void Start()
+        {
+            if (_disposed) 
+            {
+                Utils.Error("Cannot start RtcAudioSource: object has been disposed");
+                return;
+            }
+            
+            if (_audioFilter?.IsValid != true || !_audioSource) 
+            {
+                Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
+                return;
+            }
+
+            // If already running, stop first to ensure clean state
+            if (_isRunning)
+            {
+                Utils.Debug("RtcAudioSource.Start() called while running - stopping first");
+                Stop();
+            }
+
+            // Always start fresh - clean up any existing background processing
+            StopBackgroundProcessing();
+
+            // Reset all buffer state
+            _buffers[0].Reset();
+            _buffers[1].Reset();
+            _writeIndex = 0;
+            _readIndex = 1;
+            
+            // Create fresh background processing
+            _cancellationTokenSource = new CancellationTokenSource();
+            _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
+
+            // Start capturing audio
+            _isRunning = true;
+            _audioFilter.AudioRead += OnAudioRead;
+            
+            Utils.Debug("RtcAudioSource.Start() - Started with fresh state");
+        }
+
+        public void Stop()
+        {
+            if (_disposed) return;
+            
+            _isRunning = false;
+            
+            // Unsubscribe from audio events
+            if (_audioFilter?.IsValid == true) 
+                _audioFilter.AudioRead -= OnAudioRead;
+
+            // Stop background processing
+            StopBackgroundProcessing();
+            
+            Utils.Debug("RtcAudioSource.Stop() - Stopped cleanly");
+        }
+
+        private void StopBackgroundProcessing()
+        {
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Cancel();
+                
+                if (_backgroundTask != null && !_backgroundTask.IsCompleted)
+                {
+                    try
+                    {
+                        _backgroundTask.Wait(1000);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancelling
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+                    {
+                        // Also expected when cancelling
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.Error($"Error stopping background audio processing: {ex.Message}");
+                    }
+                }
+                
+                _backgroundTask?.Dispose();
+                _backgroundTask = null;
+                
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
+            }
+        }
+
         public void Dispose()
         {
             Dispose(true);
@@ -373,6 +267,8 @@ namespace LiveKit
                 
                 Handle?.Dispose();
                 _disposed = true;
+                
+                Utils.Debug($"RtcAudioSource disposed: {_configuredSampleRate}Hz, {_configuredChannels}ch");
             }
         }
 
@@ -390,14 +286,22 @@ namespace LiveKit
                 return;
             }
 
-            Debug.LogWarning($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
+            // Check for format mismatch - this indicates the need for a new RtcAudioSource
+            if (sampleRate != _configuredSampleRate || channels != _configuredChannels)
+            {
+                Utils.Error($"OnAudioRead: Audio format mismatch! Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
+                          $"got {sampleRate}Hz/{channels}ch. This RtcAudioSource needs to be disposed and recreated.");
+                return;
+            }
+
+            Utils.Debug($"OnAudioRead: Received {data.Length} samples, {channels}ch, {sampleRate}Hz");
 
             var writeBuffer = _buffers[_writeIndex];
             
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
                 writeBuffer.Data = new short[data.Length];
-                Debug.LogWarning($"OnAudioRead: Allocated new buffer with {data.Length} samples");
+                Utils.Debug($"OnAudioRead: Allocated new buffer with {data.Length} samples");
             }
             
             ConvertFloatToShort(data, writeBuffer.Data);
@@ -406,12 +310,6 @@ namespace LiveKit
             writeBuffer.Channels = channels;
             writeBuffer.SampleRate = sampleRate;
             writeBuffer.HasData = true;
-            
-            // Log when Unity's rate differs from configured rate (for debugging)
-            if (sampleRate != _configuredSampleRate)
-            {
-                Debug.LogError($"OnAudioRead: frame sample rate {sampleRate}Hz differs from configured {_configuredSampleRate}Hz - using configured rate");
-            }
             
             _buffers[_writeIndex] = writeBuffer;
             
@@ -545,13 +443,14 @@ namespace LiveKit
                                 {
                                     if (Handle == null)
                                     {
-                                        Utils.Debug("ProcessAudioDataAsync: FRAME DROPPED - No valid handle (likely during reconfiguration)");
+                                        Utils.Debug("ProcessAudioDataAsync: FRAME DROPPED - No valid handle");
                                     }
                                     else
                                     {
-                                        Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch for this source: " +
+                                        Utils.Error($"ProcessAudioDataAsync: FRAME DROPPED - Audio format mismatch: " +
                                                   $"Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
-                                                  $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch");
+                                                  $"got {readBuffer.SampleRate}Hz/{readBuffer.Channels}ch. " +
+                                                  $"RtcAudioSource needs to be disposed and recreated.");
                                     }
                                 }                              
                             }
@@ -601,11 +500,10 @@ namespace LiveKit
 
         private void SendAudioData(short[] audioData, int channels, int sampleRate)
         {
-            // Check if handle is valid before attempting to send
             var currentHandle = Handle;
             if (currentHandle == null)
             {
-                Utils.Debug("SendAudioData: Handle is null, skipping frame (likely during reconfiguration)");
+                Utils.Debug("SendAudioData: Handle is null, skipping frame");
                 return;
             }
 
@@ -639,7 +537,7 @@ namespace LiveKit
             }
             catch (ObjectDisposedException)
             {
-                Utils.Debug("SendAudioData: Handle was disposed during send (expected during reconfiguration)");
+                Utils.Debug("SendAudioData: Handle was disposed during send");
             }
             catch (Exception e) 
             { 
