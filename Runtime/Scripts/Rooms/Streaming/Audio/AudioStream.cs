@@ -40,7 +40,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 if (channels != _numChannels || sampleRate != _sampleRate || _tempBuffer == null || data.Length != _tempBuffer.Length)
                 {
-                    int size = (int)(channels * sampleRate * 0.05); // Reduced from 0.2 (200ms) to 0.05 (50ms) for lower latency
+                    int size = (int)(channels * sampleRate * 0.1); // Reduced from 0.2 (200ms) to 0.05 (50ms) for lower latency
                     if (_buffer != null)
                     {
                         using var guard = _buffer.Lock();
@@ -90,12 +90,12 @@ namespace LiveKit.Rooms.Streaming.Audio
             _audioStreams.Release(this);
         }
 
-        private void OnAudioStreamEvent(AudioStreamEvent e)
+        private void OnAudioStreamEvent(AudioStreamEvent @event)
         {
-            if (e.StreamHandle != (ulong)_handle.DangerousGetHandle())
+            if (@event.StreamHandle != (ulong)_handle.DangerousGetHandle())
                 return;
 
-            if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
+            if (@event.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
             if (_numChannels == 0)
@@ -105,12 +105,12 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 Debug.LogError("Invalid case, buffer is not set yet");
                 // prevent leak
-                var tempHandle = IFfiHandleFactory.Default.NewFfiHandle(e.FrameReceived.Frame.Handle.Id);
+                var tempHandle = IFfiHandleFactory.Default.NewFfiHandle(@event.FrameReceived.Frame.Handle.Id);
                 tempHandle.Dispose();
                 return;
             }
 
-            var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            var frame = new OwnedAudioFrame(@event.FrameReceived.Frame);
             _audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
         }
     }
