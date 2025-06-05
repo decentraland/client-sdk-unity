@@ -15,10 +15,6 @@ namespace LiveKit
         private const float S16MinValue = -32768f;
         private const float S16ScaleFactor = 32768f;
 
-        // PITCH SHIFT TRACE: Static timing tracking
-        private static DateTime _lastAudioFrameTime = DateTime.MinValue;
-        private static int _frameCount = 0;
-
         private struct AudioBuffer
         {
             public short[] Data;
@@ -51,10 +47,6 @@ namespace LiveKit
         private bool _disposed;
 
         internal FfiHandle Handle { get; private set; }
-
-        public bool IsRunning => _isRunning;
-        public uint ConfiguredSampleRate => _configuredSampleRate;
-        public uint ConfiguredChannels => _configuredChannels;
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter, uint? forceChannels = null, uint? forceSampleRate = null, AudioProcessingOptions? options = null)
         {
@@ -126,7 +118,7 @@ namespace LiveKit
         /// </summary>
         public static RtcAudioSource CreateForVoiceChat(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
+            return new RtcAudioSource(audioSource, audioFilter, forceChannels: 1, forceSampleRate: sampleRate, options: AudioProcessingOptions.Default);
         }
 
         /// <summary>
@@ -136,16 +128,6 @@ namespace LiveKit
         public static RtcAudioSource CreateForHighQualityAudio(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate)
         {
             return new RtcAudioSource(audioSource, audioFilter, forceChannels: 2, forceSampleRate: sampleRate, options: AudioProcessingOptions.HighQuality);
-        }
-
-        /// <summary>
-        /// Creates an RtcAudioSource optimized for ultra-low latency real-time communication.
-        /// Disables internal buffering and queue mode for minimum possible delay.
-        /// May cause audio glitches on slower devices or poor network conditions.
-        /// </summary>
-        public static RtcAudioSource CreateForLowLatency(AudioSource audioSource, IAudioFilter audioFilter, uint sampleRate, uint channels = 1)
-        {
-            return new RtcAudioSource(audioSource, audioFilter, forceChannels: channels, forceSampleRate: sampleRate, options: AudioProcessingOptions.LowLatency);
         }
 
         /// <summary>
@@ -170,31 +152,23 @@ namespace LiveKit
                 return;
             }
 
-            // If already running, stop first to ensure clean state
             if (_isRunning)
             {
-                Debug.LogError("RtcAudioSource.Start() called while running - stopping first");
                 Stop();
             }
 
-            // Always start fresh - clean up any existing background processing
             StopBackgroundProcessing();
 
-            // Reset all buffer state
             _buffers[0].Reset();
             _buffers[1].Reset();
             _writeIndex = 0;
             _readIndex = 1;
             
-            // Create fresh background processing
             _cancellationTokenSource = new CancellationTokenSource();
             _backgroundTask = Task.Run(() => ProcessAudioDataAsync(_cancellationTokenSource.Token));
 
-            // Start capturing audio
             _isRunning = true;
             _audioFilter.AudioRead += OnAudioRead;
-            
-            Debug.LogError("RtcAudioSource.Start() - BUFFER SIZE DEBUGGING: Started with fresh state");
         }
 
         public void Stop()
@@ -203,14 +177,10 @@ namespace LiveKit
             
             _isRunning = false;
             
-            // Unsubscribe from audio events
             if (_audioFilter?.IsValid == true) 
                 _audioFilter.AudioRead -= OnAudioRead;
 
-            // Stop background processing
             StopBackgroundProcessing();
-            
-            Utils.Debug("RtcAudioSource.Stop() - Stopped cleanly");
         }
 
         private void StopBackgroundProcessing()
@@ -271,8 +241,6 @@ namespace LiveKit
                 
                 Handle?.Dispose();
                 _disposed = true;
-                
-                Utils.Debug($"RtcAudioSource disposed: {_configuredSampleRate}Hz, {_configuredChannels}ch");
             }
         }
 
@@ -285,12 +253,9 @@ namespace LiveKit
         {
             if (!_isRunning || data == null || data.Length == 0) 
             {
-                if (data == null || data.Length == 0)
-                    Debug.LogWarning($"OnAudioRead: Invalid data - length: {data.Length}");
                 return;
             }
 
-            // Check for format mismatch - this indicates the need for a new RtcAudioSource
             if (sampleRate != _configuredSampleRate || channels != _configuredChannels)
             {
                 Utils.Error($"OnAudioRead: Audio format mismatch! Expected {_configuredSampleRate}Hz/{_configuredChannels}ch, " +
@@ -298,19 +263,11 @@ namespace LiveKit
                 return;
             }
 
-            // PITCH SHIFT TRACE: Calculate timing metrics (thread-safe)
-            var currentTime = DateTime.UtcNow;
-            var expectedDurationMs = (float)data.Length / channels / sampleRate * 1000f;
-            
-            Debug.LogError($"OnAudioRead: PITCH TRACE - Unity frame: {data.Length} samples, {channels}ch, {sampleRate}Hz, " +
-                          $"expected duration: {expectedDurationMs:F2}ms, timestamp: {currentTime:mm:ss.fff}");
-
             var writeBuffer = _buffers[_writeIndex];
             
             if (writeBuffer.Data == null || writeBuffer.Data.Length != data.Length)
             {
                 writeBuffer.Data = new short[data.Length];
-                Debug.LogError($"OnAudioRead: Allocated new buffer with {data.Length} samples");
             }
             
             ConvertFloatToShort(data, writeBuffer.Data);
@@ -375,7 +332,6 @@ namespace LiveKit
 
         private void TrySwapBuffers()
         {
-            // Non-blocking attempt to swap buffers
             if (Monitor.TryEnter(_swapLock, 0))
             {
                 try
@@ -387,13 +343,9 @@ namespace LiveKit
                         _writeIndex = oldRead;
                         _readIndex = oldWrite;
                         
-                        Utils.Debug($"TrySwapBuffers: Successfully swapped buffers (write: {oldWrite}->{_writeIndex}, read: {oldRead}->{_readIndex})");
-                        
-                        // Signal background thread that new data is available
                         try
                         {
                             _dataAvailable?.Release();
-                            Utils.Debug("TrySwapBuffers: Signaled background thread - new data available");
                         }
                         catch (ObjectDisposedException)
                         {
@@ -402,8 +354,7 @@ namespace LiveKit
                         catch (SemaphoreFullException)
                         {
                             // Background thread hasn't processed previous data yet, skip this frame
-                            // This is better than blocking the audio thread
-                            Utils.Debug("TrySwapBuffers: FRAME DROPPED - Background thread busy, semaphore full");
+                           
                         }
                     }
                 }
@@ -414,15 +365,14 @@ namespace LiveKit
             }
             else
             {
-                // If can't get lock immediately, skip this frame (better than blocking audio thread)
-                Utils.Debug("TrySwapBuffers: FRAME DROPPED - Could not acquire lock immediately");
+                // If can't get lock immediately, skip this frame ;
             }
         }
 
         private async Task ProcessAudioDataAsync(CancellationToken cancellationToken)
         {
             try
-            {                
+            {
                 while (!cancellationToken.IsCancellationRequested && !_disposed)
                 {
                     try
@@ -435,12 +385,6 @@ namespace LiveKit
                         var readBuffer = _buffers[_readIndex];
                         if (readBuffer.HasData)
                         {
-                            // PITCH SHIFT TRACE: Track frame info
-                            var expectedDurationMs = (float)readBuffer.Length / readBuffer.Channels / readBuffer.SampleRate * 1000f;
-                            
-                            Debug.LogError($"ProcessAudioDataAsync: PITCH TRACE - Processing {readBuffer.Length} samples, {readBuffer.Channels}ch, {readBuffer.SampleRate}Hz, " +
-                                          $"expected duration: {expectedDurationMs:F2}ms");
-                            
                             try
                             {
                                 if (Handle != null && 
@@ -448,15 +392,12 @@ namespace LiveKit
                                     readBuffer.Channels == _configuredChannels)
                                 {
                                     SendAudioData(readBuffer.Data, readBuffer.Channels, readBuffer.SampleRate);
-                                    
-                                    Debug.LogError($"ProcessAudioDataAsync: PITCH TRACE - SENT TO FFI - {readBuffer.Length} samples " +
-                                                  $"({readBuffer.Channels}ch, {readBuffer.SampleRate}Hz)");
                                 }
                                 else
                                 {
                                     if (Handle == null)
                                     {
-                                        Utils.Debug("ProcessAudioDataAsync: FRAME DROPPED - No valid handle");
+                                        Utils.Error("ProcessAudioDataAsync: FRAME DROPPED - No valid handle");
                                     }
                                     else
                                     {
@@ -473,30 +414,22 @@ namespace LiveKit
                             }
                             finally
                             {
-                                // Mark buffer as processed
                                 lock (_swapLock)
                                 {
                                     if (_readIndex < _buffers.Length && _buffers != null)
                                     {
                                         _buffers[_readIndex].HasData = false;
-                                        Utils.Debug($"ProcessAudioDataAsync: Buffer {_readIndex} marked as processed");
                                     }
                                 }
                             }
                         }
-                        else
-                        {
-                            Utils.Debug("ProcessAudioDataAsync: Signaled but no data available in read buffer");
-                        }
                     }
                     catch (ObjectDisposedException)
                     {
-                        // SemaphoreSlim was disposed, time to exit
                         break;
                     }
                     catch (OperationCanceledException)
                     {
-                        // Cancellation requested, exit gracefully
                         break;
                     }
                 }
@@ -505,10 +438,6 @@ namespace LiveKit
             {
                 Utils.Error($"Unexpected error in background audio processing: {ex.Message}");
             }
-            finally
-            {
-                Utils.Debug("Background audio processing stopped");
-            }
         }
 
         private void SendAudioData(short[] audioData, int channels, int sampleRate)
@@ -516,7 +445,6 @@ namespace LiveKit
             var currentHandle = Handle;
             if (currentHandle == null)
             {
-                Utils.Debug("SendAudioData: Handle is null, skipping frame");
                 return;
             }
 
@@ -550,7 +478,6 @@ namespace LiveKit
             }
             catch (ObjectDisposedException)
             {
-                Utils.Debug("SendAudioData: Handle was disposed during send");
             }
             catch (Exception e) 
             { 

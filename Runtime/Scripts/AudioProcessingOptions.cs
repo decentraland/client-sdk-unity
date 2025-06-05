@@ -26,17 +26,6 @@ namespace LiveKit
             EnableQueue = true
         };
 
-        /// <summary>
-        /// Preset optimized for ultra-low latency - disables all processing and buffering
-        /// May cause audio glitches but provides minimum possible delay
-        /// </summary>
-        public static AudioProcessingOptions LowLatency => new()
-        {
-            EchoCancellation = true,
-            NoiseSuppression = true,
-            AutoGainControl = true,
-            EnableQueue = true
-        };
 
         /// <summary>
         /// Default preset - enables all processing for clean audio

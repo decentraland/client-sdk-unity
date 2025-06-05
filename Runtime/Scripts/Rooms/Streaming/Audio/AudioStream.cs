@@ -36,13 +36,11 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void ReadAudio(float[] data, int channels, int sampleRate)
         {
-            Debug.LogError($"AudioStream: ReadAudio called - data.Length={data.Length}, channels={channels}, sampleRate={sampleRate}");
-            
             lock (_lockObject)
             {
                 if (channels != _numChannels || sampleRate != _sampleRate || _tempBuffer == null || data.Length != _tempBuffer.Length)
                 {
-                    int size = (int)(channels * sampleRate * 0.1); // Reduced from 0.2 (200ms) to 0.05 (50ms) for lower latency
+                    int size = (int)(channels * sampleRate * 0.2);
                     if (_buffer != null)
                     {
                         using var guard = _buffer.Lock();
@@ -51,7 +49,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
                     _buffer = new Mutex<RingBuffer>(new RingBuffer(size * sizeof(short)));
 
-                    _tempBuffer = new short[data.Length]; //todo avoid allocation of this buffer
+                    if (_tempBuffer == null || _tempBuffer.Length < data.Length)
+                        _tempBuffer = new short[data.Length];
+                        
                     _numChannels = (uint)channels;
                     _sampleRate = (uint)sampleRate;
                 }
@@ -61,7 +61,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                     return v / 32768f;
                 }
 
-                // "Send" the data to Unity
                 var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer!.AsSpan().Slice(0, data.Length));
 
                 {
@@ -105,7 +104,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             if (_buffer == null)
             {
-                Debug.LogError("Invalid case, buffer is not set yet");
+                Utils.Error("Invalid case, buffer is not set yet");
                 // prevent leak
                 var tempHandle = IFfiHandleFactory.Default.NewFfiHandle(@event.FrameReceived.Frame.Handle.Id);
                 tempHandle.Dispose();
@@ -113,7 +112,6 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
 
             var frame = new OwnedAudioFrame(@event.FrameReceived.Frame);
-            Debug.LogError($"AudioStream: About to call Process - frame: {frame.numChannels}ch@{frame.sampleRate}Hz, target: {_numChannels}ch@{_sampleRate}Hz");
             _audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
         }
     }
