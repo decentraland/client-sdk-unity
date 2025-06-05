@@ -36,6 +36,8 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void ReadAudio(float[] data, int channels, int sampleRate)
         {
+            Debug.LogError($"AudioStream: ReadAudio called - data.Length={data.Length}, channels={channels}, sampleRate={sampleRate}");
+            
             lock (_lockObject)
             {
                 if (channels != _numChannels || sampleRate != _sampleRate || _tempBuffer == null || data.Length != _tempBuffer.Length)
@@ -111,6 +113,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
 
             var frame = new OwnedAudioFrame(@event.FrameReceived.Frame);
+            Debug.LogError($"AudioStream: About to call Process - frame: {frame.numChannels}ch@{frame.sampleRate}Hz, target: {_numChannels}ch@{_sampleRate}Hz");
             _audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
         }
     }

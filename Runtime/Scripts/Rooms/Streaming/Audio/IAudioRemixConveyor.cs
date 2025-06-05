@@ -23,12 +23,14 @@ namespace LiveKit.Rooms.Streaming.Audio
                 uint sampleRate
             )
             {
+                Debug.LogError($"AudioRemixConveyor: Process called - Input: {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz, Output: {numChannels}ch@{sampleRate}Hz");
+                
                 // Check if INPUT format has changed - reset resampler if needed
                 // Output format (Unity's) should remain constant, only input (microphone) changes
                 if (ownedAudioFrame.sampleRate != lastInputSampleRate || 
                     ownedAudioFrame.numChannels != lastInputChannels)
                 {
-                    Debug.LogWarning($"AudioRemixConveyor: Input format change detected - resetting resampler " +
+                    Debug.LogError($"AudioRemixConveyor: Input format change detected - resetting resampler " +
                                    $"(Input: {lastInputChannels}ch@{lastInputSampleRate}Hz -> {ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz, " +
                                    $"Output remains: {numChannels}ch@{sampleRate}Hz)");
                     
@@ -54,7 +56,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                     using var guard = outputBuffer.Lock();
                     guard.Value.Write(silenceData);
                     
-                    Debug.Log($"AudioRemixConveyor: Skipped resampling for silent frame ({ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz)");
+                    Debug.LogError($"AudioRemixConveyor: Skipped resampling for silent frame ({ownedAudioFrame.numChannels}ch@{ownedAudioFrame.sampleRate}Hz -> {numChannels}ch@{sampleRate}Hz)");
                     return;
                 }
 

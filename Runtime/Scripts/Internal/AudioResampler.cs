@@ -45,7 +45,6 @@ namespace LiveKit.Internal
             remix.NumChannels = numChannels;
             remix.SampleRate = sampleRate;
             
-            // Log buffer details for performance debugging
             uint inputSamples = frame.samplesPerChannel * frame.numChannels;
             uint inputBytes = inputSamples * sizeof(short);
             float inputDurationMs = (float)frame.samplesPerChannel / frame.sampleRate * 1000f;
