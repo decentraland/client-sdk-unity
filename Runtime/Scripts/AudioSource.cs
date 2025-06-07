@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 
 namespace LiveKit
 {
-    public class RtcAudioSource
+    public class RtcAudioSource : IRtcAudioSource
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
         private const int DEFAULT_SAMPLE_RATE = 48000;
@@ -30,6 +30,7 @@ namespace LiveKit
         private int cachedFrameSize;
 
         internal FfiHandle handle { get; }
+        public FfiHandle Handle => handle;
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
