@@ -39,6 +39,12 @@ namespace LiveKit
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
             newAudioSource.NumChannels = DEFAULT_NUM_CHANNELS;
             newAudioSource.SampleRate = DEFAULT_SAMPLE_RATE;
+            newAudioSource.Options = new AudioSourceOptions()
+            {
+                EchoCancellation = true,
+                AutoGainControl = true,
+                NoiseSuppression = true,
+            };
 
             using var response = request.Send();
             FfiResponse res = response;
