@@ -16,21 +16,21 @@ namespace LiveKit
         private const float S16_MAX_VALUE = 32767f;
         private const float S16_MIN_VALUE = -32768f;
         private const float S16_SCALE_FACTOR = 32768f;
-
-        private AudioSource audioSource;
-        private IAudioFilter audioFilter;
         private readonly Mutex<RingBuffer> buffer;
+        private readonly object lockObject = new();
+
+        private readonly AudioSource audioSource;
+        private readonly IAudioFilter audioFilter;
         private short[] tempBuffer;
         private AudioFrame frame;
         private uint channels;
         private uint sampleRate;
         private int currentBufferSize;
-        private readonly object lockObject = new ();
-        
+
         private int cachedFrameSize;
+        public FfiHandle Handle => handle;
 
         internal FfiHandle handle { get; }
-        public FfiHandle Handle => handle;
 
         public RtcAudioSource(AudioSource audioSource, IAudioFilter audioFilter)
         {
@@ -52,7 +52,7 @@ namespace LiveKit
         public void Start()
         {
             Stop();
-            if (!audioFilter?.IsValid == true || !audioSource) 
+            if (!audioFilter?.IsValid == true || !audioSource)
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
@@ -75,13 +75,13 @@ namespace LiveKit
             }
         }
 
-        private void OnAudioRead(float[] data, int channels, int sampleRate)
+        private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
-            bool needsReconfiguration = channels != this.channels || 
-                                      sampleRate != this.sampleRate || 
-                                      data.Length != tempBuffer?.Length;
-            
-            int newBufferSize = 0;
+            var needsReconfiguration = channels != this.channels ||
+                                       sampleRate != this.sampleRate ||
+                                       data.Length != tempBuffer?.Length;
+
+            var newBufferSize = 0;
             if (needsReconfiguration)
             {
                 newBufferSize = (int)(channels * sampleRate * BUFFER_DURATION_S) * sizeof(short);
@@ -91,8 +91,8 @@ namespace LiveKit
             {
                 if (needsReconfiguration)
                 {
-                    bool needsNewBuffer = newBufferSize != currentBufferSize;
-                    
+                    var needsNewBuffer = newBufferSize != currentBufferSize;
+
                     if (needsNewBuffer)
                     {
                         using var guard = buffer.Lock();
@@ -106,7 +106,7 @@ namespace LiveKit
                     this.sampleRate = (uint)sampleRate;
                     if (frame.IsValid) frame.Dispose();
                     frame = new AudioFrame(this.sampleRate, this.channels, (uint)(tempBuffer.Length / this.channels));
-                    
+
                     cachedFrameSize = frame.Length;
                 }
 
@@ -117,22 +117,22 @@ namespace LiveKit
                 }
 
                 var tempSpan = tempBuffer.AsSpan();
-                for (int i = 0; i < data.Length; i++)
+                for (var i = 0; i < data.Length; i++)
                 {
-                    float sample = data[i] * S16_SCALE_FACTOR;
+                    var sample = data[i] * S16_SCALE_FACTOR;
                     if (sample > S16_MAX_VALUE) sample = S16_MAX_VALUE;
                     else if (sample < S16_MIN_VALUE) sample = S16_MIN_VALUE;
                     tempSpan[i] = (short)(sample + (sample >= 0 ? 0.5f : -0.5f));
                 }
 
-                bool shouldProcessFrame = false;
+                var shouldProcessFrame = false;
                 using (var guard = buffer.Lock())
                 {
                     var audioBytes = MemoryMarshal.Cast<short, byte>(tempBuffer.AsSpan());
                     guard.Value.Write(audioBytes);
                     shouldProcessFrame = guard.Value.AvailableRead() >= cachedFrameSize;
                 }
-                
+
                 if (shouldProcessFrame)
                 {
                     ProcessAudioFrame();
@@ -147,10 +147,10 @@ namespace LiveKit
             unsafe
             {
                 var frameSpan = new Span<byte>(frame.Data.ToPointer(), cachedFrameSize);
-                
+
                 using (var guard = buffer.Lock())
                 {
-                    int bytesRead = guard.Value.Read(frameSpan);
+                    var bytesRead = guard.Value.Read(frameSpan);
                     if (bytesRead < cachedFrameSize)
                     {
                         return; // Don't send incomplete frames
@@ -178,9 +178,9 @@ namespace LiveKit
                 pushFrame.Buffer.SampleRate = 0;
                 pushFrame.Buffer.SamplesPerChannel = 0;
             }
-            catch (Exception e) 
-            { 
-                Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace); 
+            catch (Exception e)
+            {
+                Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
             }
         }
     }
