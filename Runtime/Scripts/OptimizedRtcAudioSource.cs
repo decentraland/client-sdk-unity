@@ -106,7 +106,7 @@ namespace LiveKit
 
                 if (tempBuffer == null)
                 {
-                    //Utils.Error("Temp buffer is null");
+                    Utils.Error("Temp buffer is null");
                     return;
                 }
 
@@ -174,7 +174,7 @@ namespace LiveKit
             }
             catch (Exception e)
             {
-                //Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
+                Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
             }
         }
     }
