@@ -349,13 +349,13 @@ namespace LiveKit.Rooms
                     break;*/
                 case RoomEvent.MessageOneofCase.Eos:
                 case RoomEvent.MessageOneofCase.Disconnected:
-                    ConnectionUpdated?.Invoke(this, new ConnectionUpdate(ConnectionUpdateType.Disconnected, e.Disconnected?.Reason));
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected);
                     break;
                 case RoomEvent.MessageOneofCase.Reconnecting:
-                    ConnectionUpdated?.Invoke(this, new ConnectionUpdate(ConnectionUpdateType.Reconnecting));
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting);
                     break;
                 case RoomEvent.MessageOneofCase.Reconnected:
-                    ConnectionUpdated?.Invoke(this, new ConnectionUpdate(ConnectionUpdateType.Reconnected));
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnected);
                     break;
                 case RoomEvent.MessageOneofCase.None:
                     //ignore
