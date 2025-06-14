@@ -12,7 +12,19 @@ namespace LiveKit.Rooms
     public delegate void ConnectionDelegate(IRoom room, ConnectionUpdate connectionUpdate);
 
 
-    public enum ConnectionUpdate
+    public readonly struct ConnectionUpdate
+    {
+        public ConnectionUpdateType Type { get; }
+        public DisconnectReason? DisconnectReason { get; }
+
+        public ConnectionUpdate(ConnectionUpdateType type, DisconnectReason? disconnectReason = null)
+        {
+            Type = type;
+            DisconnectReason = disconnectReason;
+        }
+    }
+
+    public enum ConnectionUpdateType
     {
         Connected,
         Disconnected,
