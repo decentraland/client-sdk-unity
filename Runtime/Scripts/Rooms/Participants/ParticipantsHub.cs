@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LiveKit.Rooms.Participants.Factory;
 
 namespace LiveKit.Rooms.Participants
 {
@@ -7,8 +8,14 @@ namespace LiveKit.Rooms.Participants
     {
         private Participant? local;
         private readonly Dictionary<string, Participant> remoteParticipants = new();
+        private readonly IParticipantFactory participantFactory;
 
         public event ParticipantDelegate? UpdatesFromParticipant;
+
+        public ParticipantsHub(IParticipantFactory participantFactory)
+        {
+            this.participantFactory = participantFactory;
+        }
 
         public Participant LocalParticipant()
         {
@@ -51,7 +58,16 @@ namespace LiveKit.Rooms.Participants
 
         public void Clear()
         {
-            local = null;
+            if (local != null)
+            {
+                participantFactory.Release(local);
+                local = null;
+            }
+
+            foreach (var participant in remoteParticipants.Values)
+            {
+                participantFactory.Release(participant);
+            }
             remoteParticipants.Clear();
         }
     }

@@ -77,10 +77,10 @@ namespace LiveKit.Rooms
         public Room() : this(
             new ArrayMemoryPool(ArrayPool<byte>.Shared!),
             new DefaultActiveSpeakers(),
-            new ParticipantsHub().Capture(out var capturedHub),
+            new ParticipantsHub(IParticipantFactory.Default.Capture(out var participantFactory)).Capture(out var capturedHub),
             new TracksFactory().Capture(out var tracksFactory),
             IFfiHandleFactory.Default,
-            IParticipantFactory.Default,
+            participantFactory,
             ITrackPublicationFactory.Default,
             new DataPipe(),
             new MemoryRoomInfo(),
