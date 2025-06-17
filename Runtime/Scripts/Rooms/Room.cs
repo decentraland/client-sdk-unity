@@ -421,6 +421,9 @@ namespace LiveKit.Rooms
         public void OnDisconnect()
         {
             FfiClient.Instance.RoomEventReceived -= OnEventReceived;
+            activeSpeakers.Clear();
+            participantsHub.Clear();
+            Handle = null!;
         }
     }
 
