@@ -8,15 +8,9 @@ namespace LiveKit.Rooms.Participants
     {
         private Participant? local;
         private readonly Dictionary<string, Participant> remoteParticipants = new();
-        private readonly IParticipantFactory participantFactory;
 
         public event ParticipantDelegate? UpdatesFromParticipant;
-
-        public ParticipantsHub(IParticipantFactory participantFactory)
-        {
-            this.participantFactory = participantFactory;
-        }
-
+        
         public Participant LocalParticipant()
         {
             return local
@@ -58,15 +52,11 @@ namespace LiveKit.Rooms.Participants
 
         public void Clear()
         {
-            if (local != null)
-            {
-                participantFactory.Release(local);
-                local = null;
-            }
-
+            local.Clear();
+            local = null;
             foreach (var participant in remoteParticipants.Values)
             {
-                participantFactory.Release(participant);
+                participant.Clear();
             }
             remoteParticipants.Clear();
         }

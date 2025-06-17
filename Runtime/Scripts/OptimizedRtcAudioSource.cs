@@ -6,15 +6,13 @@ using System.Buffers;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
-using Livekit.Utils;
 
 namespace LiveKit
 {
-    public class OptimizedRtcAudioSource : IRtcAudioSource
+    public class OptimizedRtcAudioSource : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
         private const int DEFAULT_SAMPLE_RATE = 48000;
-        private const float BUFFER_DURATION_S = 0.2f;
         private const float S16_MAX_VALUE = 32767f;
         private const float S16_MIN_VALUE = -32768f;
         private const float S16_SCALE_FACTOR = 32768f;
@@ -36,7 +34,9 @@ namespace LiveKit
         private readonly Vector4 scaleFactor;
         private readonly Vector4 maxValue;
         private readonly Vector4 minValue;
-
+        private bool _disposed;
+        private bool _muted;
+        public bool Muted => _muted;
         public FfiHandle Handle => handle;
         internal FfiHandle handle { get; }
 
@@ -68,8 +68,14 @@ namespace LiveKit
             this.audioFilter = audioFilter;
         }
 
+        public void SetMute(bool muted)
+        {
+            _muted = muted;
+        }
+
         private short[] GetBuffer(int size)
         {
+            if (_disposed) return null;
             if (bufferPool.TryDequeue(out var buffer) && buffer.Length >= size)
             {
                 return buffer;
@@ -79,6 +85,7 @@ namespace LiveKit
 
         private void ReturnBuffer(short[] buffer)
         {
+            if (_disposed) return;
             if (bufferPool.Count < POOL_SIZE)
             {
                 bufferPool.Enqueue(buffer);
@@ -91,6 +98,7 @@ namespace LiveKit
 
         public void Start()
         {
+            if (_disposed) return;
             Stop();
             if (!audioFilter?.IsValid == true)
             {
@@ -120,6 +128,7 @@ namespace LiveKit
 
         private void ProcessVectorized(Span<float> input, Span<short> output)
         {
+            if (_disposed) return;
             int i = 0;
             for (; i <= input.Length - VECTOR_SIZE; i += VECTOR_SIZE)
             {
@@ -150,6 +159,7 @@ namespace LiveKit
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
+            if (_disposed || _muted) return;
             var needsReconfiguration = channels != this.channels ||
                                        sampleRate != this.sampleRate;
 
@@ -166,6 +176,8 @@ namespace LiveKit
             }
 
             var buffer = GetBuffer(data.Length);
+            if (buffer == null) return;
+            
             ProcessVectorized(data, buffer);
             writeQueue.Enqueue(buffer);
 
@@ -177,7 +189,7 @@ namespace LiveKit
 
         private void ProcessAudioFrames()
         {
-            if (!frame.IsValid) return;
+            if (!frame.IsValid || _disposed || _muted) return;
 
             while (writeQueue.TryDequeue(out var buffer))
             {
@@ -232,6 +244,27 @@ namespace LiveKit
 
                 ReturnBuffer(buffer);
             }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed && disposing)
+            {
+                Stop();
+                if (frame.IsValid) frame.Dispose();
+            }
+            _disposed = true;
+        }
+
+        ~OptimizedRtcAudioSource()
+        {
+            Dispose(false);
         }
     }
 }
