@@ -11,7 +11,7 @@ namespace LiveKit
 {
     public class OptimizedRtcAudioSource : IRtcAudioSource, IDisposable
     {
-        private const int DEFAULT_NUM_CHANNELS = 2;
+        private const int DEFAULT_NUM_CHANNELS = 1;
         private const int DEFAULT_SAMPLE_RATE = 48000;
         private const float S16_MAX_VALUE = 32767f;
         private const float S16_MIN_VALUE = -32768f;
