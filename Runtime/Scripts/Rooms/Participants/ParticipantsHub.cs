@@ -52,7 +52,7 @@ namespace LiveKit.Rooms.Participants
 
         public void Clear()
         {
-            local.Clear();
+            local?.Clear();
             local = null;
             foreach (var participant in remoteParticipants.Values)
             {
