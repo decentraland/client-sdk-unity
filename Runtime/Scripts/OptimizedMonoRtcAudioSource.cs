@@ -9,7 +9,7 @@ using LiveKit.Proto;
 
 namespace LiveKit
 {
-    public class OptimizedRtcAudioSource : IRtcAudioSource, IDisposable
+    public class OptimizedMonoRtcAudioSource : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 1;
         private const int DEFAULT_SAMPLE_RATE = 48000;
@@ -40,7 +40,7 @@ namespace LiveKit
         public FfiHandle Handle => handle;
         internal FfiHandle handle { get; }
 
-        public OptimizedRtcAudioSource(IAudioFilter audioFilter)
+        public OptimizedMonoRtcAudioSource(IAudioFilter audioFilter)
         {
             bufferPool = new ConcurrentQueue<short[]>();
             writeQueue = new ConcurrentQueue<short[]>();
@@ -262,7 +262,7 @@ namespace LiveKit
             _disposed = true;
         }
 
-        ~OptimizedRtcAudioSource()
+        ~OptimizedMonoRtcAudioSource()
         {
             Dispose(false);
         }
