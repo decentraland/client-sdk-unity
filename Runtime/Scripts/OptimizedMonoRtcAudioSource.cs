@@ -59,7 +59,7 @@ namespace LiveKit
             {
                 EchoCancellation = true,
                 AutoGainControl = true,
-                NoiseSuppression = true,
+                NoiseSuppression = true
             };
 
             using var response = request.Send();
