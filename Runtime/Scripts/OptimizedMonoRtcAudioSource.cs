@@ -59,7 +59,12 @@ namespace LiveKit
             {
                 EchoCancellation = true,
                 AutoGainControl = true,
-                NoiseSuppression = true
+                NoiseSuppression = true,
+                // Extended AGC configuration for optimal echo cancellation
+                AgcTargetLevelDbfs = -3,        // Target -3 dBFS (standard for good AEC correlation)
+                AgcCompressionGainDb = 9,       // 9 dB compression (moderate, good for AEC)
+                AgcEnableLimiter = true,        // Enable limiter to prevent clipping
+                AgcMode = 0                     // Adaptive mode (better for varying input levels)
             };
 
             using var response = request.Send();
