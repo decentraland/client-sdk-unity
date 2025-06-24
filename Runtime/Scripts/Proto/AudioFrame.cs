@@ -97,7 +97,7 @@ namespace LiveKit.Proto {
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioStreamEvent), global::LiveKit.Proto.AudioStreamEvent.Parser, new[]{ "StreamHandle", "FrameReceived", "Eos" }, new[]{ "Message" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioFrameReceived), global::LiveKit.Proto.AudioFrameReceived.Parser, new[]{ "Frame" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioStreamEOS), global::LiveKit.Proto.AudioStreamEOS.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioSourceOptions), global::LiveKit.Proto.AudioSourceOptions.Parser, new[]{ "EchoCancellation", "NoiseSuppression", "AutoGainControl" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioSourceOptions), global::LiveKit.Proto.AudioSourceOptions.Parser, new[]{ "EchoCancellation", "NoiseSuppression", "AutoGainControl", "AgcTargetLevelDbfs", "AgcCompressionGainDb", "AgcEnableLimiter", "AgcMode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioSourceInfo), global::LiveKit.Proto.AudioSourceInfo.Parser, new[]{ "Type" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.OwnedAudioSource), global::LiveKit.Proto.OwnedAudioSource.Parser, new[]{ "Handle", "Info" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LiveKit.Proto.AudioResamplerInfo), global::LiveKit.Proto.AudioResamplerInfo.Parser, null, null, null, null, null),
@@ -4332,6 +4332,10 @@ namespace LiveKit.Proto {
       echoCancellation_ = other.echoCancellation_;
       noiseSuppression_ = other.noiseSuppression_;
       autoGainControl_ = other.autoGainControl_;
+      agcTargetLevelDbfs_ = other.agcTargetLevelDbfs_;
+      agcCompressionGainDb_ = other.agcCompressionGainDb_;
+      agcEnableLimiter_ = other.agcEnableLimiter_;
+      agcMode_ = other.agcMode_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4377,6 +4381,54 @@ namespace LiveKit.Proto {
       }
     }
 
+    /// <summary>Field number for the "agc_target_level_dbfs" field.</summary>
+    public const int AgcTargetLevelDbfsFieldNumber = 4;
+    private int agcTargetLevelDbfs_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int AgcTargetLevelDbfs {
+      get { return agcTargetLevelDbfs_; }
+      set {
+        agcTargetLevelDbfs_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "agc_compression_gain_db" field.</summary>
+    public const int AgcCompressionGainDbFieldNumber = 5;
+    private int agcCompressionGainDb_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int AgcCompressionGainDb {
+      get { return agcCompressionGainDb_; }
+      set {
+        agcCompressionGainDb_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "agc_enable_limiter" field.</summary>
+    public const int AgcEnableLimiterFieldNumber = 6;
+    private bool agcEnableLimiter_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AgcEnableLimiter {
+      get { return agcEnableLimiter_; }
+      set {
+        agcEnableLimiter_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "agc_mode" field.</summary>
+    public const int AgcModeFieldNumber = 7;
+    private int agcMode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int AgcMode {
+      get { return agcMode_; }
+      set {
+        agcMode_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4395,6 +4447,10 @@ namespace LiveKit.Proto {
       if (EchoCancellation != other.EchoCancellation) return false;
       if (NoiseSuppression != other.NoiseSuppression) return false;
       if (AutoGainControl != other.AutoGainControl) return false;
+      if (AgcTargetLevelDbfs != other.AgcTargetLevelDbfs) return false;
+      if (AgcCompressionGainDb != other.AgcCompressionGainDb) return false;
+      if (AgcEnableLimiter != other.AgcEnableLimiter) return false;
+      if (AgcMode != other.AgcMode) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4405,6 +4461,10 @@ namespace LiveKit.Proto {
       if (EchoCancellation != false) hash ^= EchoCancellation.GetHashCode();
       if (NoiseSuppression != false) hash ^= NoiseSuppression.GetHashCode();
       if (AutoGainControl != false) hash ^= AutoGainControl.GetHashCode();
+      if (AgcTargetLevelDbfs != 0) hash ^= AgcTargetLevelDbfs.GetHashCode();
+      if (AgcCompressionGainDb != 0) hash ^= AgcCompressionGainDb.GetHashCode();
+      if (AgcEnableLimiter != false) hash ^= AgcEnableLimiter.GetHashCode();
+      if (AgcMode != 0) hash ^= AgcMode.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4435,6 +4495,22 @@ namespace LiveKit.Proto {
         output.WriteRawTag(24);
         output.WriteBool(AutoGainControl);
       }
+      if (AgcTargetLevelDbfs != 0) {
+        output.WriteRawTag(32);
+        output.WriteInt32(AgcTargetLevelDbfs);
+      }
+      if (AgcCompressionGainDb != 0) {
+        output.WriteRawTag(40);
+        output.WriteInt32(AgcCompressionGainDb);
+      }
+      if (AgcEnableLimiter != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(AgcEnableLimiter);
+      }
+      if (AgcMode != 0) {
+        output.WriteRawTag(56);
+        output.WriteInt32(AgcMode);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4457,6 +4533,22 @@ namespace LiveKit.Proto {
         output.WriteRawTag(24);
         output.WriteBool(AutoGainControl);
       }
+      if (AgcTargetLevelDbfs != 0) {
+        output.WriteRawTag(32);
+        output.WriteInt32(AgcTargetLevelDbfs);
+      }
+      if (AgcCompressionGainDb != 0) {
+        output.WriteRawTag(40);
+        output.WriteInt32(AgcCompressionGainDb);
+      }
+      if (AgcEnableLimiter != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(AgcEnableLimiter);
+      }
+      if (AgcMode != 0) {
+        output.WriteRawTag(56);
+        output.WriteInt32(AgcMode);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4475,6 +4567,18 @@ namespace LiveKit.Proto {
       }
       if (AutoGainControl != false) {
         size += 1 + 1;
+      }
+      if (AgcTargetLevelDbfs != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(AgcTargetLevelDbfs);
+      }
+      if (AgcCompressionGainDb != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(AgcCompressionGainDb);
+      }
+      if (AgcEnableLimiter != false) {
+        size += 1 + 1;
+      }
+      if (AgcMode != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(AgcMode);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4496,6 +4600,18 @@ namespace LiveKit.Proto {
       }
       if (other.AutoGainControl != false) {
         AutoGainControl = other.AutoGainControl;
+      }
+      if (other.AgcTargetLevelDbfs != 0) {
+        AgcTargetLevelDbfs = other.AgcTargetLevelDbfs;
+      }
+      if (other.AgcCompressionGainDb != 0) {
+        AgcCompressionGainDb = other.AgcCompressionGainDb;
+      }
+      if (other.AgcEnableLimiter != false) {
+        AgcEnableLimiter = other.AgcEnableLimiter;
+      }
+      if (other.AgcMode != 0) {
+        AgcMode = other.AgcMode;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -4524,6 +4640,22 @@ namespace LiveKit.Proto {
             AutoGainControl = input.ReadBool();
             break;
           }
+          case 32: {
+            AgcTargetLevelDbfs = input.ReadInt32();
+            break;
+          }
+          case 40: {
+            AgcCompressionGainDb = input.ReadInt32();
+            break;
+          }
+          case 48: {
+            AgcEnableLimiter = input.ReadBool();
+            break;
+          }
+          case 56: {
+            AgcMode = input.ReadInt32();
+            break;
+          }
         }
       }
     #endif
@@ -4549,6 +4681,22 @@ namespace LiveKit.Proto {
           }
           case 24: {
             AutoGainControl = input.ReadBool();
+            break;
+          }
+          case 32: {
+            AgcTargetLevelDbfs = input.ReadInt32();
+            break;
+          }
+          case 40: {
+            AgcCompressionGainDb = input.ReadInt32();
+            break;
+          }
+          case 48: {
+            AgcEnableLimiter = input.ReadBool();
+            break;
+          }
+          case 56: {
+            AgcMode = input.ReadInt32();
             break;
           }
         }
