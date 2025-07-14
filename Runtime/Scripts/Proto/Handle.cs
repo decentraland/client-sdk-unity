@@ -25,7 +25,7 @@ namespace LiveKit.Proto {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CgxoYW5kbGUucHJvdG8SDWxpdmVraXQucHJvdG8iHAoORmZpT3duZWRIYW5k",
-            "bGUSCgoCaWQYASACKARCEKoCDUxpdmVLaXQuUHJvdG8="));
+            "bGUSCgoCaWQYASABKARCEKoCDUxpdmVLaXQuUHJvdG9iBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
@@ -47,7 +47,6 @@ namespace LiveKit.Proto {
   /// When refering to a handle without owning it, we just use a uint32 without this message. 
   /// (the variable name is suffixed with "_handle")
   /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class FfiOwnedHandle : pb::IMessage<FfiOwnedHandle>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -55,7 +54,6 @@ namespace LiveKit.Proto {
   {
     private static readonly pb::MessageParser<FfiOwnedHandle> _parser = new pb::MessageParser<FfiOwnedHandle>(() => new FfiOwnedHandle());
     private pb::UnknownFieldSet _unknownFields;
-    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<FfiOwnedHandle> Parser { get { return _parser; } }
@@ -83,7 +81,6 @@ namespace LiveKit.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public FfiOwnedHandle(FfiOwnedHandle other) : this() {
-      _hasBits0 = other._hasBits0;
       id_ = other.id_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -96,29 +93,14 @@ namespace LiveKit.Proto {
 
     /// <summary>Field number for the "id" field.</summary>
     public const int IdFieldNumber = 1;
-    private readonly static ulong IdDefaultValue = 0UL;
-
     private ulong id_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ulong Id {
-      get { if ((_hasBits0 & 1) != 0) { return id_; } else { return IdDefaultValue; } }
+      get { return id_; }
       set {
-        _hasBits0 |= 1;
         id_ = value;
       }
-    }
-    /// <summary>Gets whether the "id" field is set</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool HasId {
-      get { return (_hasBits0 & 1) != 0; }
-    }
-    /// <summary>Clears the value of the "id" field</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void ClearId() {
-      _hasBits0 &= ~1;
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -144,7 +126,7 @@ namespace LiveKit.Proto {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (HasId) hash ^= Id.GetHashCode();
+      if (Id != 0UL) hash ^= Id.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -163,7 +145,7 @@ namespace LiveKit.Proto {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (HasId) {
+      if (Id != 0UL) {
         output.WriteRawTag(8);
         output.WriteUInt64(Id);
       }
@@ -177,7 +159,7 @@ namespace LiveKit.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (HasId) {
+      if (Id != 0UL) {
         output.WriteRawTag(8);
         output.WriteUInt64(Id);
       }
@@ -191,7 +173,7 @@ namespace LiveKit.Proto {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (HasId) {
+      if (Id != 0UL) {
         size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Id);
       }
       if (_unknownFields != null) {
@@ -206,7 +188,7 @@ namespace LiveKit.Proto {
       if (other == null) {
         return;
       }
-      if (other.HasId) {
+      if (other.Id != 0UL) {
         Id = other.Id;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -220,11 +202,7 @@ namespace LiveKit.Proto {
     #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
+        switch(tag) {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
@@ -243,11 +221,7 @@ namespace LiveKit.Proto {
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
+        switch(tag) {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;

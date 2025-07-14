@@ -4,7 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using System.Threading;
-using Google.Protobuf.Collections;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Rooms.AsyncInstractions;
 using LiveKit.Rooms.TrackPublications;
@@ -18,15 +17,15 @@ namespace LiveKit.Rooms.Participants
     public class Participant
     {
         public delegate void PublishDelegate(TrackPublication publication);
-
+        
         public Origin Origin { get; private set; }
-
+        
         public string Sid => info.Sid!;
         public string Identity => info.Identity!;
         public string Name => info.Name!;
         public string Metadata => info.Metadata!;
         public IReadOnlyDictionary<string, string> Attributes => info.Attributes;
-
+        
         public bool Speaking { get; private set; }
         public float AudioLevel { get; private set; }
 
@@ -35,15 +34,15 @@ namespace LiveKit.Rooms.Participants
         public event PublishDelegate? TrackPublished;
 
         public event PublishDelegate? TrackUnpublished;
-
+        
         public IReadOnlyDictionary<string, TrackPublication> Tracks => tracks;
+        
+        internal FfiHandle Handle { get; private set; }= null!;
 
-        internal FfiHandle Handle { get; private set; } = null!;
-
-        public Room Room { get; private set; } = null!;
+        public Room Room { get; private set; }= null!;
 
         private readonly Dictionary<string, TrackPublication> tracks = new();
-
+        
         private ParticipantInfo info = null!;
 
         internal void Construct(ParticipantInfo info, Room room, FfiHandle handle, Origin origin)
@@ -53,7 +52,7 @@ namespace LiveKit.Rooms.Participants
             Handle = handle;
             this.info = info;
         }
-
+        
         public void Clear()
         {
             Room = null!;
@@ -101,13 +100,12 @@ namespace LiveKit.Rooms.Participants
             ConnectionQuality = connectionQuality;
         }
 
-        public void UpdateAttributes(RepeatedField<AttributesEntry> attributes)
+        public void UpdateAttributes(IReadOnlyDictionary<string, string> attributes)
         {
             info.Attributes.Clear();
-            foreach (var pair in attributes)
+            foreach (var (key, value) in attributes)
             {
-                if (pair is { HasKey: true, HasValue: true })
-                    info.Attributes.Add(pair.Key, pair.Value);
+                info.Attributes.Add(key, value);
             }
         }
 
@@ -118,7 +116,7 @@ namespace LiveKit.Rooms.Participants
         {
             if (Origin is not Origin.Local)
                 throw new InvalidOperationException("Can publish track for the local participant only");
-
+            
             using var request = FFIBridge.Instance.NewRequest<PublishTrackRequest>();
             var publish = request.request;
             publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
@@ -130,8 +128,8 @@ namespace LiveKit.Rooms.Participants
         }
 
         public void UnpublishTrack(
-            ITrack localTrack,
-            bool stopOnUnpublish)
+           ITrack localTrack,
+           bool stopOnUnpublish)
         {
             if (Origin is not Origin.Local)
                 throw new InvalidOperationException("Can unpublish track for the local participant only");
