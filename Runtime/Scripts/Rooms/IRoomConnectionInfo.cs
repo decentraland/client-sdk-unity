@@ -9,10 +9,7 @@ namespace LiveKit.Rooms
     public delegate void ConnectionStateChangeDelegate(ConnectionState connectionState);
 
 
-    public delegate void ConnectionDelegate(IRoom room, ConnectionUpdate connectionUpdate);
-
-
-    public delegate void DisconnectionDelegate(IRoom room, DisconnectReason disconnectReason);
+    public delegate void ConnectionDelegate(IRoom room, ConnectionUpdate connectionUpdate, DisconnectReason? disconnectReason = null);
 
 
     public enum ConnectionUpdate
@@ -30,7 +27,5 @@ namespace LiveKit.Rooms
         event ConnectionStateChangeDelegate? ConnectionStateChanged;
 
         event ConnectionDelegate? ConnectionUpdated;
-
-        event DisconnectionDelegate? Disconnected;
     }
 }
