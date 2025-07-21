@@ -73,6 +73,7 @@ namespace LiveKit.Rooms
         public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
         public event ConnectionStateChangeDelegate? ConnectionStateChanged;
         public event ConnectionDelegate? ConnectionUpdated;
+        public event DisconnectionDelegate? Disconnected;
 
         public Room() : this(
             new ArrayMemoryPool(ArrayPool<byte>.Shared!),
@@ -350,7 +351,7 @@ namespace LiveKit.Rooms
                 case RoomEvent.MessageOneofCase.Eos:
                 case RoomEvent.MessageOneofCase.Disconnected:
                     var disconnectReason = e.Disconnected?.Reason ?? DisconnectReason.UnknownReason;
-                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected, disconnectReason);
+                    Disconnected?.Invoke(this, disconnectReason);
                     break;
                 case RoomEvent.MessageOneofCase.Reconnecting:
                     ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting);
