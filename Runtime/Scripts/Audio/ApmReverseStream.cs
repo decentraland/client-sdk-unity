@@ -1,9 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
-using LiveKit;
 using RichTypes;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace LiveKit.Audio
 {
@@ -98,6 +96,8 @@ namespace LiveKit.Audio
         public void Dispose()
         {
             captureBuffer.Dispose();
+            if (audioFilter)
+                UnityEngine.Object.Destroy(audioFilter);
             // Doesn't dispose the APM because doesn't own it
         }
     }
