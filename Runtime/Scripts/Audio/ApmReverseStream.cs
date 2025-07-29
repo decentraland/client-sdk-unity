@@ -16,9 +16,9 @@ namespace LiveKit.Audio
         // We don't need a mutex here because the buffer is used only by audio thread
         private readonly AudioBuffer captureBuffer = new();
         private readonly Apm apm; // APM is thread safe
-        private readonly AudioFilter audioFilter;
+        private readonly IAudioFilter audioFilter;
 
-        internal ApmReverseStream(AudioFilter audioFilter, Apm apm)
+        public ApmReverseStream(IAudioFilter audioFilter, Apm apm)
         {
             this.audioFilter = audioFilter;
             this.apm = apm;
@@ -96,9 +96,6 @@ namespace LiveKit.Audio
         public void Dispose()
         {
             captureBuffer.Dispose();
-            if (audioFilter)
-                UnityEngine.Object.Destroy(audioFilter);
-            // Doesn't dispose the APM because doesn't own it
         }
     }
 }
