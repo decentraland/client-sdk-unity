@@ -52,12 +52,19 @@ namespace LiveKit.Audio
             this.apm = apm;
         }
 
-        public static Result<MicrophoneRtcAudioSource2> New(IAudioFilter microphoneAudioFilter, IAudioFilter listenerAudioFilter)
+        public static Result<MicrophoneRtcAudioSource2> New(IAudioFilter microphoneAudioFilter)
         {
             Apm apm = Apm.NewDefault();
             apm.SetStreamDelay(Apm.EstimateStreamDelayMs());
 
-            ApmReverseStream reverseStream = new ApmReverseStream(listenerAudioFilter, apm);
+            Result<ApmReverseStream> reverseStream = ApmReverseStream.New(apm);
+            if (reverseStream.Success == false)
+            {
+                return Result<MicrophoneRtcAudioSource2>.ErrorResult(
+                    $"Cannot create reverse stream: {reverseStream.ErrorMessage}"
+                );
+            }
+            
             return Result<MicrophoneRtcAudioSource2>.SuccessResult(new MicrophoneRtcAudioSource2(microphoneAudioFilter, apm, reverseStream));
         }
 
