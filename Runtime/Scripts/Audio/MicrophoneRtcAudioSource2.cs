@@ -11,7 +11,7 @@ namespace LiveKit.Audio
 {
     public class MicrophoneRtcAudioSource2 : IRtcAudioSource, IDisposable
     {
-        private const int DEFAULT_NUM_CHANNELS = 1;
+        private const int DEFAULT_NUM_CHANNELS = 2;
         private readonly AudioBuffer buffer = new();
         private readonly object lockObject = new();
 
