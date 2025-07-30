@@ -11,7 +11,7 @@ namespace LiveKit.Audio
     public class MicrophoneRtcAudioSource2 : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
-        private const float VOLUME_MULTIPLIER = 15.0f;
+        private const float VOLUME_MULTIPLIER = 5f;
         private const uint TARGET_SAMPLE_RATE = 48000; // LiveKit's default
         
         private readonly AudioBuffer buffer = new();
