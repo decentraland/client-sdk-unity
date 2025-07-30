@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Runtime.InteropServices;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
@@ -64,8 +63,8 @@ namespace LiveKit.Audio
                     $"Cannot create reverse stream: {reverseStream.ErrorMessage}"
                 );
             }
-            
-            return Result<MicrophoneRtcAudioSource2>.SuccessResult(new MicrophoneRtcAudioSource2(microphoneAudioFilter, apm, reverseStream));
+
+            return Result<MicrophoneRtcAudioSource2>.SuccessResult(new MicrophoneRtcAudioSource2(microphoneAudioFilter, apm, reverseStream.Value));
         }
 
         FfiHandle IRtcAudioSource.BorrowHandle()
@@ -82,7 +81,7 @@ namespace LiveKit.Audio
         public void Start()
         {
             Stop();
-            if (!audioFilter?.IsValid == true)
+            if (!audioFilter.IsValid == true)
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
@@ -94,9 +93,9 @@ namespace LiveKit.Audio
 
         public void Stop()
         {
-            if (audioFilter?.IsValid == true) 
+            if (audioFilter.IsValid == true)
                 audioFilter.AudioRead -= OnAudioRead;
-            
+
             reverseStream?.Stop();
 
             lock (lockObject)
@@ -107,6 +106,8 @@ namespace LiveKit.Audio
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
+            if (disposed) return;
+
             lock (lockObject)
             {
                 buffer.Write(data, (uint)channels, (uint)sampleRate);
@@ -142,6 +143,8 @@ namespace LiveKit.Audio
 
         private void ProcessAudioFrame(in AudioFrame frame)
         {
+            if (disposed) return;
+
             try
             {
                 using var request = FFIBridge.Instance.NewRequest<CaptureAudioFrameRequest>();
@@ -177,6 +180,8 @@ namespace LiveKit.Audio
             }
 
             disposed = true;
+            
+            Stop();
 
             buffer.Dispose();
             apm.Dispose();
