@@ -1,27 +1,31 @@
 using System;
 using LiveKit.Internal;
 using UnityEngine;
+using UnityEngine.Audio;
 using Object = UnityEngine.Object;
 
 namespace LiveKit.Runtime.Scripts.Audio
 {
     public class DeviceMicrophoneAudioSource : IAudioFilter, IDisposable
     {
+        private readonly AudioMixerGroup? audioMixerGroup;
+
         private Internals internals;
         private bool disposed;
 
         public bool IsRecording => disposed == false && internals.audioSource.isPlaying;
 
-        private DeviceMicrophoneAudioSource(Internals internals)
+        private DeviceMicrophoneAudioSource(Internals internals, AudioMixerGroup? audioMixerGroup)
         {
             this.internals = internals;
+            this.audioMixerGroup = audioMixerGroup;
             internals.audioFilter.AudioRead += AudioFilterOnAudioRead;
         }
 
-        public static DeviceMicrophoneAudioSource New(MicrophoneSelection microphoneSelection)
+        public static DeviceMicrophoneAudioSource New(MicrophoneSelection microphoneSelection, AudioMixerGroup? audioMixerGroup)
         {
-            Internals internals = Internals.New(microphoneSelection);
-            return new DeviceMicrophoneAudioSource(internals);
+            Internals internals = Internals.New(microphoneSelection, audioMixerGroup);
+            return new DeviceMicrophoneAudioSource(internals, audioMixerGroup);
         }
 
         public void Dispose()
@@ -34,10 +38,10 @@ namespace LiveKit.Runtime.Scripts.Audio
         public void SwitchMicrophone(MicrophoneSelection microphoneSelection)
         {
             bool wasRecording = IsRecording;
-            
+
             internals.audioFilter.AudioRead -= AudioFilterOnAudioRead;
             internals.Dispose();
-            internals = Internals.New(microphoneSelection);
+            internals = Internals.New(microphoneSelection, audioMixerGroup);
 
             if (wasRecording)
                 StartCapture();
@@ -57,7 +61,7 @@ namespace LiveKit.Runtime.Scripts.Audio
         {
             internals.audioSource.Stop();
         }
-        
+
         public bool IsValid => disposed == false && internals.audioFilter.IsValid;
 
         public event IAudioFilter.OnAudioDelegate? AudioRead;
@@ -81,13 +85,20 @@ namespace LiveKit.Runtime.Scripts.Audio
                 this.currentMicrophone = currentMicrophone;
             }
 
-            public static Internals New(MicrophoneSelection microphoneSelection)
+            public static Internals New(MicrophoneSelection microphoneSelection, AudioMixerGroup? audioMixerGroup)
             {
                 GameObject microphoneObject = new GameObject($"microphone: {microphoneSelection.name}");
 
                 var audioSource = microphoneObject.AddComponent<AudioSource>();
                 audioSource.loop = true;
-                audioSource.clip = Microphone.Start(microphoneSelection.name, true, 1, 48000)!; //frequency is not guaranteed by Unity
+                audioSource.clip = Microphone.Start(
+                    microphoneSelection.name,
+                    true,
+                    1,
+                    48000
+                )!; //frequency is not guaranteed by Unity
+                if (audioMixerGroup != null)
+                    audioSource.outputAudioMixerGroup = audioMixerGroup;
 
                 var audioFilter = microphoneObject.AddComponent<AudioFilter>()!;
                 // Prevent microphone feedback

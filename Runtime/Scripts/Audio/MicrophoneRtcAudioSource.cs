@@ -6,6 +6,7 @@ using LiveKit.Proto;
 using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace LiveKit.Audio
 {
@@ -54,7 +55,7 @@ namespace LiveKit.Audio
             this.apm = apm;
         }
 
-        public static Result<MicrophoneRtcAudioSource> New(MicrophoneSelection? microphoneSelection = null)
+        public static Result<MicrophoneRtcAudioSource> New(MicrophoneSelection? microphoneSelection = null, AudioMixerGroup? audioMixerGroup = null)
         {
             MicrophoneSelection selection;
             if (microphoneSelection.HasValue)
@@ -80,7 +81,7 @@ namespace LiveKit.Audio
             }
 
 
-            DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection);
+            DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection, audioMixerGroup);
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
                 new MicrophoneRtcAudioSource(source, apm, reverseStream.Value)
