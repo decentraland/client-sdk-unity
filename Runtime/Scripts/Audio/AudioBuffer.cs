@@ -11,6 +11,9 @@ namespace LiveKit.Audio
         private uint channels;
         private uint sampleRate;
 
+        private PCMSample[]? tempPcmBuffer;
+        private int tempBufferSize;
+
         /// <summary>
         /// Initializes a new audio sample buffer for holding samples for a given duration.
         /// </summary>
@@ -20,6 +23,8 @@ namespace LiveKit.Audio
             buffer = new RingBuffer(0);
             channels = 0;
             sampleRate = 0;
+            tempPcmBuffer = null;
+            tempBufferSize = 0;
         }
 
         /// <summary>
@@ -34,17 +39,22 @@ namespace LiveKit.Audio
         /// <param name="sampleRate">The sample rate of the audio data in Hz.</param>
         internal void Write(ReadOnlySpan<float> data, uint channels, uint sampleRate)
         {
-            // TODO reuse temp buffer
-            var s16Data = new PCMSample[data.Length];
-            for (int i = 0; i < data.Length; i++)
+            if (tempPcmBuffer == null || data.Length > tempBufferSize)
             {
-                s16Data[i] = PCMSample.FromUnitySample(data[i]);
+                tempBufferSize = Math.Max(data.Length, tempBufferSize * 2);
+                tempPcmBuffer = new PCMSample[tempBufferSize];
             }
 
-            Capture(s16Data, channels, sampleRate);
+            var pcmSpan = new Span<PCMSample>(tempPcmBuffer, 0, data.Length);
+            for (int i = 0; i < data.Length; i++)
+            {
+                pcmSpan[i] = PCMSample.FromUnitySample(data[i]);
+            }
+
+            Capture(pcmSpan, channels, sampleRate);
         }
 
-        private void Capture(PCMSample[] data, uint channels, uint sampleRate)
+        private void Capture(ReadOnlySpan<PCMSample> data, uint channels, uint sampleRate)
         {
             if (channels != this.channels || sampleRate != this.sampleRate)
             {
@@ -91,6 +101,7 @@ namespace LiveKit.Audio
         public void Dispose()
         {
             buffer.Dispose();
+            tempPcmBuffer = null;
         }
     }
 }

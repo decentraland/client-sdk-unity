@@ -72,30 +72,39 @@ namespace LiveKit.Audio
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
             captureBuffer.Write(data, (uint)channels, (uint)sampleRate);
+            
             while (true)
             {
                 var frameResult = captureBuffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
                 if (frameResult.Has == false) break;
+                
                 using var frame = frameResult.Value;
+                ProcessReverseFrame(frame);
+            }
+        }
 
-                var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+        private void ProcessReverseFrame(AudioFrame frame)
+        {
+            var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
 
-                var apmFrame = ApmFrame.New(
-                    audioBytes,
-                    frame.NumChannels,
-                    frame.SamplesPerChannel,
-                    new SampleRate(frame.SampleRate),
-                    out string? error
-                );
-                if (error != null)
-                {
-                    Debug.LogError($"Error during creation ApmFrame: {error}");
-                    break;
-                }
+            var apmFrame = ApmFrame.New(
+                audioBytes,
+                frame.NumChannels,
+                frame.SamplesPerChannel,
+                new SampleRate(frame.SampleRate),
+                out string? error
+            );
+            
+            if (error != null)
+            {
+                Debug.LogError($"Error during creation ApmFrame: {error}");
+                return;
+            }
 
-                var result = apm.ProcessReverseStream(apmFrame);
-                if (result.Success == false)
-                    Debug.LogError($"Error during processing reverse frame: {result.ErrorMessage}");
+            var result = apm.ProcessReverseStream(apmFrame);
+            if (result.Success == false)
+            {
+                Debug.LogError($"Error during processing reverse frame: {result.ErrorMessage}");
             }
         }
 

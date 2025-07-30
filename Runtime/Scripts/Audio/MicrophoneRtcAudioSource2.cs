@@ -11,6 +11,9 @@ namespace LiveKit.Audio
     public class MicrophoneRtcAudioSource2 : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
+        private const float VOLUME_MULTIPLIER = 15.0f;
+        private const uint TARGET_SAMPLE_RATE = 48000; // LiveKit's default
+        
         private readonly AudioBuffer buffer = new();
         private readonly object lockObject = new();
 
@@ -23,6 +26,9 @@ namespace LiveKit.Audio
         private bool disposed;
 
         private readonly FfiHandle handle;
+        private readonly float[] floatSamplesBuffer;
+        private readonly PCMSample[] pcmSamplesBuffer;
+        private readonly AudioBuffer resampledBuffer = new();
 
         private MicrophoneRtcAudioSource2(
             IAudioFilter audioFilter,
@@ -49,6 +55,10 @@ namespace LiveKit.Audio
             handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
             this.audioFilter = audioFilter;
             this.apm = apm;
+
+            var maxSamplesPerFrame = (TARGET_SAMPLE_RATE / 100) * DEFAULT_NUM_CHANNELS;
+            floatSamplesBuffer = new float[maxSamplesPerFrame];
+            pcmSamplesBuffer = new PCMSample[maxSamplesPerFrame];
         }
 
         public static Result<MicrophoneRtcAudioSource2> New(IAudioFilter microphoneAudioFilter)
@@ -101,6 +111,7 @@ namespace LiveKit.Audio
             lock (lockObject)
             {
                 buffer.Dispose();
+                resampledBuffer.Dispose();
             }
         }
 
@@ -111,34 +122,176 @@ namespace LiveKit.Audio
             lock (lockObject)
             {
                 buffer.Write(data, (uint)channels, (uint)sampleRate);
-                while (true)
+            }
+
+            ProcessAvailableFrames();
+        }
+
+        private void ProcessAvailableFrames()
+        {
+            if (disposed) return;
+
+            while (true)
+            {
+                AudioFrame? frame = null;
+                
+                // Only lock for buffer read operation
+                lock (lockObject)
                 {
                     var frameResult = buffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
                     if (frameResult.Has == false) break;
-                    using var frame = frameResult.Value;
+                    frame = frameResult.Value;
+                }
 
-                    var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+                if (frame == null) break;
 
-                    var apmFrame = ApmFrame.New(
-                        audioBytes,
-                        frame.NumChannels,
-                        frame.SamplesPerChannel,
-                        new SampleRate(frame.SampleRate),
-                        out string? error
-                    );
-                    if (error != null)
-                    {
-                        Utils.Error($"Error during creation ApmFrame: {error}");
-                        break;
-                    }
-
-                    var apmResult = apm.ProcessStream(apmFrame);
-                    if (apmResult.Success == false)
-                        Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
-
-                    ProcessAudioFrame(frame);
+                using (frame.Value)
+                {
+                    ProcessSingleFrame(frame.Value);
                 }
             }
+        }
+
+        private void ProcessSingleFrame(AudioFrame frame)
+        {
+            var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+
+            var apmFrame = ApmFrame.New(
+                audioBytes,
+                frame.NumChannels,
+                frame.SamplesPerChannel,
+                new SampleRate(frame.SampleRate),
+                out string? error
+            );
+            if (error != null)
+            {
+                Utils.Error($"Error during creation ApmFrame: {error}");
+                return;
+            }
+
+            var apmResult = apm.ProcessStream(apmFrame);
+            if (apmResult.Success == false)
+                Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
+
+            var processedFrame = ApplyVolumeAndResampling(frame);
+            ProcessAudioFrame(processedFrame);
+        }
+
+        private AudioFrame ApplyVolumeAndResampling(in AudioFrame originalFrame)
+        {
+            var pcmSamples = MemoryMarshal.Cast<byte, PCMSample>(originalFrame.AsSpan());
+            
+            // Apply volume directly to PCM samples
+            for (int i = 0; i < pcmSamples.Length; i++)
+            {
+                var sample = pcmSamples[i].data;
+                var amplifiedSample = (short)(sample * VOLUME_MULTIPLIER);
+                
+                // Clamp to prevent overflow
+                if (amplifiedSample > 32767) amplifiedSample = 32767;
+                else if (amplifiedSample < -32768) amplifiedSample = -32768;
+                
+                pcmSamples[i] = new PCMSample { data = amplifiedSample };
+            }
+
+            if (originalFrame.SampleRate != TARGET_SAMPLE_RATE)
+            {
+                var resampledPcmSamples = ResamplePCMAudio(pcmSamples, originalFrame.SampleRate, TARGET_SAMPLE_RATE);
+                
+                var newSamplesPerChannel = (uint)(resampledPcmSamples.Length / originalFrame.NumChannels);
+                var newFrame = new AudioFrame(TARGET_SAMPLE_RATE, originalFrame.NumChannels, newSamplesPerChannel);
+                
+                var newFrameSpan = MemoryMarshal.Cast<byte, PCMSample>(newFrame.AsSpan());
+                resampledPcmSamples.CopyTo(newFrameSpan);
+                
+                return newFrame;
+            }
+            
+            return originalFrame;
+        }
+
+        private Span<PCMSample> ResamplePCMAudio(ReadOnlySpan<PCMSample> inputSamples, uint inputSampleRate, uint outputSampleRate)
+        {
+            if (inputSampleRate == outputSampleRate)
+                return inputSamples;
+
+            var ratio = (double)outputSampleRate / inputSampleRate;
+            var outputLength = (int)(inputSamples.Length * ratio);
+            
+            // Ensure buffer is large enough
+            if (outputLength > pcmSamplesBuffer.Length)
+            {
+                // Fallback to array allocation if buffer too small
+                var outputSamples = new PCMSample[outputLength];
+                ResamplePCMAudioToBuffer(inputSamples, inputSampleRate, outputSampleRate, outputSamples);
+                return outputSamples.AsSpan();
+            }
+            
+            var outputSpan = new Span<PCMSample>(pcmSamplesBuffer, 0, outputLength);
+            ResamplePCMAudioToBuffer(inputSamples, inputSampleRate, outputSampleRate, outputSpan);
+            return outputSpan;
+        }
+
+        private void ResamplePCMAudioToBuffer(ReadOnlySpan<PCMSample> inputSamples, uint inputSampleRate, uint outputSampleRate, Span<PCMSample> outputSamples)
+        {
+            var ratio = (double)outputSampleRate / inputSampleRate;
+            
+            for (int i = 0; i < outputSamples.Length; i++)
+            {
+                var inputIndex = i / ratio;
+                var inputIndexFloor = (int)Math.Floor(inputIndex);
+                var inputIndexCeil = Math.Min(inputIndexFloor + 1, inputSamples.Length - 1);
+                var fraction = inputIndex - inputIndexFloor;
+
+                if (inputIndexFloor >= inputSamples.Length)
+                {
+                    outputSamples[i] = new PCMSample { data = 0 };
+                }
+                else if (inputIndexFloor == inputIndexCeil)
+                {
+                    outputSamples[i] = inputSamples[inputIndexFloor];
+                }
+                else
+                {
+                    var sample1 = inputSamples[inputIndexFloor].data;
+                    var sample2 = inputSamples[inputIndexCeil].data;
+                    var interpolatedValue = (short)(sample1 * (1 - fraction) + sample2 * fraction);
+                    outputSamples[i] = new PCMSample { data = interpolatedValue };
+                }
+            }
+        }
+
+        private float[] ResampleAudio(ReadOnlySpan<float> inputSamples, uint inputSampleRate, uint outputSampleRate)
+        {
+            if (inputSampleRate == outputSampleRate)
+                return inputSamples.ToArray();
+
+            var ratio = (double)outputSampleRate / inputSampleRate;
+            var outputLength = (int)(inputSamples.Length * ratio);
+            var outputSamples = new float[outputLength];
+
+            for (int i = 0; i < outputLength; i++)
+            {
+                var inputIndex = i / ratio;
+                var inputIndexFloor = (int)Math.Floor(inputIndex);
+                var inputIndexCeil = Math.Min(inputIndexFloor + 1, inputSamples.Length - 1);
+                var fraction = inputIndex - inputIndexFloor;
+
+                if (inputIndexFloor >= inputSamples.Length)
+                {
+                    outputSamples[i] = 0;
+                }
+                else if (inputIndexFloor == inputIndexCeil)
+                {
+                    outputSamples[i] = inputSamples[inputIndexFloor];
+                }
+                else
+                {
+                    outputSamples[i] = inputSamples[inputIndexFloor] * (1 - fraction) + inputSamples[inputIndexCeil] * fraction;
+                }
+            }
+
+            return outputSamples;
         }
 
         private void ProcessAudioFrame(in AudioFrame frame)
@@ -184,6 +337,7 @@ namespace LiveKit.Audio
             Stop();
 
             buffer.Dispose();
+            resampledBuffer.Dispose();
             apm.Dispose();
             reverseStream?.Dispose();
 

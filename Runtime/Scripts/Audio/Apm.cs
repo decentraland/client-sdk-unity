@@ -65,7 +65,7 @@ namespace LiveKit.Audio
                         var streamResponse = response.ApmProcessReverseStream;
 
                         if (streamResponse.HasError)
-                            Result.ErrorResult($"Cannot {nameof(ProcessReverseStream)} due error: {streamResponse.Error}");
+                            return Result.ErrorResult($"Cannot {nameof(ProcessReverseStream)} due error: {streamResponse.Error}");
 
                         return Result.SuccessResult();
                     }
@@ -96,7 +96,7 @@ namespace LiveKit.Audio
                         var streamResponse = response.ApmProcessStream;
 
                         if (streamResponse.HasError)
-                            Result.ErrorResult($"Cannot {nameof(ProcessStream)} due error: {streamResponse.Error}");
+                            return Result.ErrorResult($"Cannot {nameof(ProcessStream)} due error: {streamResponse.Error}");
 
                         return Result.SuccessResult();
                     }
