@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Linq;
 using System.Runtime.InteropServices;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
+using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using UnityEngine;
 
@@ -15,8 +15,7 @@ namespace LiveKit.Audio
         private readonly AudioBuffer buffer = new();
         private readonly object lockObject = new();
 
-        private readonly AudioSource audioSource;
-        private readonly IAudioFilter audioFilter;
+        private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
         private readonly GameObject gameObject;
@@ -26,13 +25,15 @@ namespace LiveKit.Audio
 
         private readonly FfiHandle handle;
 
+        public bool IsRecording => deviceMicrophoneAudioSource.IsRecording;
+
         private MicrophoneRtcAudioSource(
-            AudioSource audioSource,
-            IAudioFilter audioFilter,
+            DeviceMicrophoneAudioSource deviceMicrophoneAudioSource,
             Apm apm,
             ApmReverseStream? apmReverseStream
         )
         {
+            this.deviceMicrophoneAudioSource = deviceMicrophoneAudioSource;
             reverseStream = apmReverseStream;
 
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
@@ -50,13 +51,23 @@ namespace LiveKit.Audio
             using var response = request.Send();
             FfiResponse res = response;
             handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
-            this.audioSource = audioSource;
-            this.audioFilter = audioFilter;
             this.apm = apm;
         }
 
-        public static Result<MicrophoneRtcAudioSource> New(string? microphoneName = null)
+        public static Result<MicrophoneRtcAudioSource> New(MicrophoneSelection? microphoneSelection = null)
         {
+            MicrophoneSelection selection;
+            if (microphoneSelection.HasValue)
+                selection = microphoneSelection.Value;
+            else
+            {
+                Result<MicrophoneSelection> result = MicrophoneSelection.Default();
+                if (result.Success)
+                    selection = result.Value;
+                else
+                    return Result<MicrophoneRtcAudioSource>.ErrorResult(result.ErrorMessage!);
+            }
+
             Apm apm = Apm.NewDefault();
             apm.SetStreamDelay(Apm.EstimateStreamDelayMs());
 
@@ -68,20 +79,11 @@ namespace LiveKit.Audio
                 );
             }
 
-            GameObject microphoneObject = new GameObject("microphone");
 
-            microphoneName ??= Microphone.devices!.First();
-
-            var audioSource = microphoneObject.AddComponent<AudioSource>();
-            audioSource.loop = true;
-            audioSource.clip = Microphone.Start(microphoneName, true, 1, 48000); //frequency is not guaranteed by Unity
-
-            var audioFilter = microphoneObject.AddComponent<AudioFilter>();
-            // Prevent microphone feedback
-            microphoneObject.AddComponent<OmitAudioFilter>();
+            DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection);
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
-                new MicrophoneRtcAudioSource(audioSource, audioFilter, apm, reverseStream.Value)
+                new MicrophoneRtcAudioSource(source, apm, reverseStream.Value)
             );
         }
 
@@ -99,27 +101,36 @@ namespace LiveKit.Audio
         public void Start()
         {
             Stop();
-            if (!audioFilter?.IsValid == true || !audioSource)
+            if (deviceMicrophoneAudioSource.IsValid == false)
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
-            audioFilter.AudioRead += OnAudioRead;
-            audioSource.Play();
+            deviceMicrophoneAudioSource.AudioRead += OnAudioRead;
+            deviceMicrophoneAudioSource.StartCapture();
             reverseStream?.Start();
         }
 
         public void Stop()
         {
-            if (audioFilter?.IsValid == true) audioFilter.AudioRead -= OnAudioRead;
-            if (audioSource) audioSource.Stop();
-            reverseStream?.Stop();
+            if (deviceMicrophoneAudioSource.IsValid) deviceMicrophoneAudioSource.AudioRead -= OnAudioRead;
+            deviceMicrophoneAudioSource.StopCapture();
 
-            lock (lockObject)
-            {
-                buffer.Dispose();
-            }
+            reverseStream?.Stop();
+        }
+
+        public void Toggle()
+        {
+            if (IsRecording)
+                Stop();
+            else
+                Start();
+        }
+
+        public void SwitchMicrophone(MicrophoneSelection microphoneSelection)
+        {
+            deviceMicrophoneAudioSource.SwitchMicrophone(microphoneSelection);
         }
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
@@ -195,7 +206,11 @@ namespace LiveKit.Audio
 
             disposed = true;
 
-            buffer.Dispose();
+            lock (lockObject)
+            {
+                buffer.Dispose();
+            }
+
             apm.Dispose();
             reverseStream?.Dispose();
 
