@@ -33,9 +33,14 @@ namespace LiveKit.Runtime.Scripts.Audio
 
         public void SwitchMicrophone(MicrophoneSelection microphoneSelection)
         {
+            bool wasRecording = IsRecording;
+            
             internals.audioFilter.AudioRead -= AudioFilterOnAudioRead;
             internals.Dispose();
             internals = Internals.New(microphoneSelection);
+
+            if (wasRecording)
+                StartCapture();
         }
 
         private void AudioFilterOnAudioRead(Span<float> data, int channels, int sampleRate)
