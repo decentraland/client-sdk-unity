@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using RichTypes;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace LiveKit.Audio
 {
@@ -26,16 +27,21 @@ namespace LiveKit.Audio
 
         public static Result<ApmReverseStream> New(Apm apm)
         {
-            var audioListener = GameObject.FindObjectOfType<AudioListener>();
+            var audioListener = Object.FindFirstObjectByType<AudioListener>();
+            
             if (audioListener == null)
             {
                 return Result<ApmReverseStream>.ErrorResult("AudioListener not found in scene");
             }
+            
+            var exists = audioListener.gameObject.TryGetComponent(out AudioFilter audioFilter);
 
-            var audioFilter = audioListener.gameObject.AddComponent<AudioFilter>();
-            if (audioFilter == null)
+            if (!exists)
             {
-                return Result<ApmReverseStream>.ErrorResult("Cannot add audioFilter");
+                audioFilter = audioListener.gameObject.AddComponent<AudioFilter>();
+                
+                if (audioFilter == null)
+                    return Result<ApmReverseStream>.ErrorResult("Cannot add audioFilter");
             }
 
             return Result<ApmReverseStream>.SuccessResult(new ApmReverseStream(audioFilter, apm));
