@@ -191,7 +191,7 @@ namespace LiveKit.Audio
                 if (amplifiedSample > 32767) amplifiedSample = 32767;
                 else if (amplifiedSample < -32768) amplifiedSample = -32768;
                 
-                pcmSamples[i] = new PCMSample { data = amplifiedSample };
+                pcmSamples[i] = new PCMSample(amplifiedSample);
             }
 
             if (originalFrame.SampleRate != TARGET_SAMPLE_RATE)
@@ -210,33 +210,16 @@ namespace LiveKit.Audio
             return originalFrame;
         }
 
-        private Span<PCMSample> ResamplePCMAudio(ReadOnlySpan<PCMSample> inputSamples, uint inputSampleRate, uint outputSampleRate)
+        private PCMSample[] ResamplePCMAudio(ReadOnlySpan<PCMSample> inputSamples, uint inputSampleRate, uint outputSampleRate)
         {
             if (inputSampleRate == outputSampleRate)
-                return inputSamples;
+                return inputSamples.ToArray();
 
             var ratio = (double)outputSampleRate / inputSampleRate;
             var outputLength = (int)(inputSamples.Length * ratio);
-            
-            // Ensure buffer is large enough
-            if (outputLength > pcmSamplesBuffer.Length)
-            {
-                // Fallback to array allocation if buffer too small
-                var outputSamples = new PCMSample[outputLength];
-                ResamplePCMAudioToBuffer(inputSamples, inputSampleRate, outputSampleRate, outputSamples);
-                return outputSamples.AsSpan();
-            }
-            
-            var outputSpan = new Span<PCMSample>(pcmSamplesBuffer, 0, outputLength);
-            ResamplePCMAudioToBuffer(inputSamples, inputSampleRate, outputSampleRate, outputSpan);
-            return outputSpan;
-        }
+            var outputSamples = new PCMSample[outputLength];
 
-        private void ResamplePCMAudioToBuffer(ReadOnlySpan<PCMSample> inputSamples, uint inputSampleRate, uint outputSampleRate, Span<PCMSample> outputSamples)
-        {
-            var ratio = (double)outputSampleRate / inputSampleRate;
-            
-            for (int i = 0; i < outputSamples.Length; i++)
+            for (int i = 0; i < outputLength; i++)
             {
                 var inputIndex = i / ratio;
                 var inputIndexFloor = (int)Math.Floor(inputIndex);
@@ -245,7 +228,7 @@ namespace LiveKit.Audio
 
                 if (inputIndexFloor >= inputSamples.Length)
                 {
-                    outputSamples[i] = new PCMSample { data = 0 };
+                    outputSamples[i] = new PCMSample(0);
                 }
                 else if (inputIndexFloor == inputIndexCeil)
                 {
@@ -255,10 +238,13 @@ namespace LiveKit.Audio
                 {
                     var sample1 = inputSamples[inputIndexFloor].data;
                     var sample2 = inputSamples[inputIndexCeil].data;
-                    var interpolatedValue = (short)(sample1 * (1 - fraction) + sample2 * fraction);
-                    outputSamples[i] = new PCMSample { data = interpolatedValue };
+                    var fractionFloat = (float)fraction;
+                    var interpolatedValue = (short)(sample1 * (1 - fractionFloat) + sample2 * fractionFloat);
+                    outputSamples[i] = new PCMSample(interpolatedValue);
                 }
             }
+
+            return outputSamples;
         }
 
         private float[] ResampleAudio(ReadOnlySpan<float> inputSamples, uint inputSampleRate, uint outputSampleRate)
@@ -287,7 +273,8 @@ namespace LiveKit.Audio
                 }
                 else
                 {
-                    outputSamples[i] = inputSamples[inputIndexFloor] * (1 - fraction) + inputSamples[inputIndexCeil] * fraction;
+                    var fractionFloat = (float)fraction;
+                    outputSamples[i] = inputSamples[inputIndexFloor] * (1 - fractionFloat) + inputSamples[inputIndexCeil] * fractionFloat;
                 }
             }
 
