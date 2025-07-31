@@ -16,9 +16,9 @@ namespace LiveKit.Audio
         // We don't need a mutex here because the buffer is used only by audio thread
         private readonly AudioBuffer captureBuffer = new();
         private readonly Apm apm; // APM is thread safe
-        private readonly AudioFilter audioFilter;
+        private readonly GlobalListenerAudioFilter audioFilter;
 
-        internal ApmReverseStream(AudioFilter audioFilter, Apm apm)
+        internal ApmReverseStream(GlobalListenerAudioFilter audioFilter, Apm apm)
         {
             this.audioFilter = audioFilter;
             this.apm = apm;
@@ -26,19 +26,11 @@ namespace LiveKit.Audio
 
         public static Result<ApmReverseStream> New(Apm apm)
         {
-            var audioListener = GameObject.FindObjectOfType<AudioListener>();
-            if (audioListener == null)
-            {
-                return Result<ApmReverseStream>.ErrorResult("AudioListener not found in scene");
-            }
+            Result<GlobalListenerAudioFilter> result = GlobalListenerAudioFilter.NewOrExisting();
+            if (result.Success == false)
+                return Result<ApmReverseStream>.ErrorResult($"Cannot create APM: {result.ErrorMessage}");
 
-            var audioFilter = audioListener.gameObject.AddComponent<AudioFilter>();
-            if (audioFilter == null)
-            {
-                return Result<ApmReverseStream>.ErrorResult("Cannot add audioFilter");
-            }
-
-            return Result<ApmReverseStream>.SuccessResult(new ApmReverseStream(audioFilter, apm));
+            return Result<ApmReverseStream>.SuccessResult(new ApmReverseStream(result.Value, apm));
         }
 
         public static ApmReverseStream? NewOrNull(Apm apm)
@@ -65,7 +57,7 @@ namespace LiveKit.Audio
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
-            captureBuffer.Write(data, (uint)channels, (uint)sampleRate);
+            captureBuffer.Write(data, (uint) channels, (uint) sampleRate);
             while (true)
             {
                 var frameResult = captureBuffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
