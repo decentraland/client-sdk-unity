@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
+using LiveKit.Internal;
+using LiveKit.Rooms.Streaming.Audio;
 using RichTypes;
 using UnityEngine;
 
@@ -17,6 +19,7 @@ namespace LiveKit.Audio
         private readonly AudioBuffer captureBuffer = new();
         private readonly Apm apm; // APM is thread safe
         private readonly GlobalListenerAudioFilter audioFilter;
+        private readonly AudioResampler resampler = AudioResampler.New();
 
         internal ApmReverseStream(GlobalListenerAudioFilter audioFilter, Apm apm)
         {
@@ -62,7 +65,8 @@ namespace LiveKit.Audio
             {
                 var frameResult = captureBuffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
                 if (frameResult.Has == false) break;
-                using var frame = frameResult.Value;
+                using AudioFrame rawFrame = frameResult.Value;
+                using OwnedAudioFrame frame = resampler.LiveKitCompatibleRemixAndResample(rawFrame);
 
                 var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
 
