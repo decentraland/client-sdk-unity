@@ -49,7 +49,7 @@ namespace LiveKit.Audio
         {
             if (_disposed)
             {
-                Utils.Debug("Attempted to access disposed AudioFrame");
+                Utils.Error("Attempted to access disposed AudioFrame");
                 return Span<byte>.Empty;
             }
             

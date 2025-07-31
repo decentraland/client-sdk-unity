@@ -79,11 +79,8 @@ namespace LiveKit.Audio
             if (buffer.AvailableRead() < requiredLength) return Option<AudioFrame>.None;
 
             var frame = new AudioFrame(sampleRate, channels, samplesForDuration);
-            unsafe
-            {
-                var frameData = new Span<byte>(frame.Data.ToPointer(), frame.Length);
-                buffer.Read(frameData);
-            }
+            Span<byte> frameData = frame.AsSpan();
+            buffer.Read(frameData);
 
             return Option<AudioFrame>.Some(frame);
         }
