@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
+using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using UnityEngine;
@@ -13,6 +14,7 @@ namespace LiveKit.Audio
     public class MicrophoneRtcAudioSource : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
+        private readonly AudioResampler audioResampler = AudioResampler.New();
         private readonly AudioBuffer buffer = new();
         private readonly object lockObject = new();
 
@@ -141,11 +143,12 @@ namespace LiveKit.Audio
                 buffer.Write(data, (uint)channels, (uint)sampleRate);
                 while (true)
                 {
-                    var frameResult = buffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
+                    Option<AudioFrame> frameResult = buffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
                     if (frameResult.Has == false) break;
-                    using var frame = frameResult.Value;
+                    using AudioFrame rawFrame = frameResult.Value;
+                    using OwnedAudioFrame frame = audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
 
-                    var audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+                    Span<PCMSample> audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
 
                     var apmFrame = ApmFrame.New(
                         audioBytes,
@@ -169,7 +172,7 @@ namespace LiveKit.Audio
             }
         }
 
-        private void ProcessAudioFrame(in AudioFrame frame)
+        private void ProcessAudioFrame(in OwnedAudioFrame frame)
         {
             try
             {
@@ -213,6 +216,7 @@ namespace LiveKit.Audio
             }
 
             apm.Dispose();
+            audioResampler.Dispose();
             reverseStream?.Dispose();
 
             if (handleBorrowed == false)
