@@ -8,18 +8,27 @@ using System.Runtime.InteropServices;
 
 namespace LiveKit.Audio
 {
-    public struct AudioFrame : IDisposable
+    public interface IAudioFrame
     {
-        public readonly uint NumChannels;
-        public readonly uint SampleRate;
-        public readonly uint SamplesPerChannel;
+        public uint NumChannels { get; }
+        public uint SampleRate { get; }
+        public uint SamplesPerChannel { get; }
+        public IntPtr Data { get; }
+    }
+
+
+    public struct AudioFrame : IAudioFrame, IDisposable
+    {
+        public uint NumChannels { get; }
+        public uint SampleRate { get; }
+        public uint SamplesPerChannel { get; }
 
         private readonly NativeArray<byte> _data;
         private readonly IntPtr _dataPtr;
         private bool _disposed;
         
         public IntPtr Data => _dataPtr;
-        public int Length => (int)(SamplesPerChannel * NumChannels * sizeof(short));
+        public int Length => (int) (SamplesPerChannel * NumChannels * sizeof(short));
         public bool IsValid => _data.IsCreated && !_disposed;
 
         internal AudioFrame(uint sampleRate, uint numChannels, uint samplesPerChannel)
@@ -31,8 +40,8 @@ namespace LiveKit.Audio
 
             unsafe
             {
-                _data = new NativeArray<byte>((int)(samplesPerChannel * numChannels * sizeof(short)), Allocator.Persistent);
-                _dataPtr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(_data);
+                _data = new NativeArray<byte>((int) (samplesPerChannel * numChannels * sizeof(short)), Allocator.Persistent);
+                _dataPtr = (IntPtr) NativeArrayUnsafeUtility.GetUnsafePtr(_data);
             }
         }
 
