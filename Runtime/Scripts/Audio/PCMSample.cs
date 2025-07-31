@@ -8,6 +8,8 @@ namespace LiveKit.Audio
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct PCMSample
     {
+        public static readonly PCMSample SILENCE = default;
+
         public const byte BytesPerSample = 2; // Int16 = Int8 * 2
 
         private const float S16_MAX_VALUE = 32767f;

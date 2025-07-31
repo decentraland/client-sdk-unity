@@ -43,8 +43,13 @@ namespace LiveKit.Audio
 
             Capture(s16Data, channels, sampleRate);
         }
+        
+        internal void Write(ReadOnlySpan<PCMSample> samples, uint channels, uint sampleRate)
+        {
+            Capture(samples, channels, sampleRate);
+        }
 
-        private void Capture(PCMSample[] data, uint channels, uint sampleRate)
+        private void Capture(ReadOnlySpan<PCMSample> data, uint channels, uint sampleRate)
         {
             if (channels != this.channels || sampleRate != this.sampleRate)
             {

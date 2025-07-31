@@ -31,7 +31,7 @@ namespace LiveKit.Audio
 
             unsafe
             {
-                return new Span<byte>(frame.Data.ToPointer(), frame.Length());
+                return new Span<byte>(frame.Data.ToPointer(), frame.LengthBytes());
             }
         }
 
@@ -40,9 +40,9 @@ namespace LiveKit.Audio
             return MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
         }
 
-        public static int Length<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
+        public static int LengthBytes<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
         {
-            return (int) (frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
+            return (int)(frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
         }
     }
 
@@ -53,16 +53,14 @@ namespace LiveKit.Audio
         public uint SampleRate { get; }
         public uint SamplesPerChannel { get; }
 
-        private readonly NativeArray<byte> _data;
         private readonly IntPtr _dataPtr;
         private bool _disposed;
 
         public IntPtr Data => _dataPtr;
-        public int Length => this.Length();
-        public bool IsValid => _data.IsCreated && !_disposed;
+        public bool IsValid => _dataPtr != IntPtr.Zero && !_disposed;
         public bool Disposed => _disposed;
 
-        internal AudioFrame(uint sampleRate, uint numChannels, uint samplesPerChannel)
+        public AudioFrame(uint sampleRate, uint numChannels, uint samplesPerChannel)
         {
             SampleRate = sampleRate;
             NumChannels = numChannels;
@@ -71,18 +69,23 @@ namespace LiveKit.Audio
 
             unsafe
             {
-                _data = new NativeArray<byte>((int) (samplesPerChannel * numChannels * sizeof(short)), Allocator.Persistent);
-                _dataPtr = (IntPtr) NativeArrayUnsafeUtility.GetUnsafePtr(_data);
+                uint size = samplesPerChannel * numChannels * sizeof(short);
+                _dataPtr = new IntPtr(UnsafeUtility.Malloc(size, sizeof(short), Allocator.Persistent)!);
             }
         }
 
         public void Dispose()
         {
-            if (!_disposed && _data.IsCreated)
-            {
-                _data.Dispose();
-                _disposed = true;
-            }
+            if (_disposed)
+                return;
+
+            if (_dataPtr != IntPtr.Zero)
+                unsafe
+                {
+                    UnsafeUtility.Free(_dataPtr.ToPointer(), Allocator.Persistent);
+                }
+
+            _disposed = true;
         }
     }
 }

@@ -1,8 +1,8 @@
 using System;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using System.Runtime.InteropServices;
-using Livekit.Utils;
+using LiveKit.Audio;
+using RichTypes;
 using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
@@ -10,19 +10,15 @@ namespace LiveKit.Rooms.Streaming.Audio
     public class AudioStream : IAudioStream
     {
         private readonly IAudioStreams audioStreams;
-        private readonly IAudioRemixConveyor audioRemixConveyor;
         private readonly FfiHandle handle;
-        private readonly AudioStreamInfo info;
+        private readonly AudioResampler audioResampler = AudioResampler.New();
 
-        private Mutex<RingBuffer>? _buffer;
-        private int _bufferSize = 0; // Track current buffer size in samples
-        private short[] _tempBuffer;
-        private uint _numChannels = 0;
-        private uint _sampleRate;
-
-        private readonly object _lock = new();
+        private readonly AudioBuffer buffer = new(50);
+        private short[] tempBuffer;
 
         private bool disposed;
+
+        private long previousTimeStamp;
 
         public AudioStream(
             IAudioStreams audioStreams,
@@ -31,9 +27,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         )
         {
             this.audioStreams = audioStreams;
-            this.audioRemixConveyor = audioRemixConveyor;
             handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
-            info = ownedAudioStream.Info!;
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
         }
 
@@ -45,11 +39,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             disposed = true;
 
             handle.Dispose();
-            if (_buffer != null)
-            {
-                using var guard = _buffer.Lock();
-                guard.Value.Dispose();
-            }
+            buffer.Dispose();
+            audioResampler.Dispose();
 
             FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
             audioStreams.Release(this);
@@ -57,46 +48,56 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
-            lock (_lock)
+            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            Debug.Log($"Timestamp diff: {timestampMs - previousTimeStamp} ms");
+            previousTimeStamp = timestampMs;
+
+            if (disposed)
+                return;
+
+            const int TO_MILLISECONDS = 1000;
+            // We need to pass the exact 10ms chunks, otherwise - crash
+            // Example
+            // #                                                                                             
+            // # Fatal error in: ../common_audio/resampler/push_sinc_resampler.cc, line 52                   
+            // # last system error: 1                                                                        
+            // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
+            // #   
+            const int LIVEKIT_ACCEPTED_DURATION_MS = 10;
+
+            int samplesPerChannel = data.Length / channels;
+            int requiredDuration = (samplesPerChannel * TO_MILLISECONDS) / sampleRate;
+
+            int remainingDuration = requiredDuration;
+
+            int dataIndex = 0;
+
+            while (remainingDuration > 0)
             {
-                int requiredSize = (int)(channels * sampleRate * 0.2); // 200 ms buffer
-
-                // Only reallocate RingBuffer if needed
-                if (_buffer == null || _bufferSize < requiredSize * sizeof(short))
+                Option<AudioFrame> frameOption = buffer.ReadDuration(LIVEKIT_ACCEPTED_DURATION_MS);
+                remainingDuration -= LIVEKIT_ACCEPTED_DURATION_MS;
+                if (frameOption.Has == false)
                 {
-                    if (_buffer != null)
-                    {
-                        using var guard = _buffer.Lock();
-                        guard.Value.Dispose();
-                    }
-                    _buffer = new Mutex<RingBuffer>(new RingBuffer(requiredSize * sizeof(short)));
-                    _bufferSize = requiredSize * sizeof(short);
+                    Utils.Debug("No more frames to process, fill the rest with silence");
+                    for (; dataIndex < data.Length; dataIndex++) data[dataIndex] = 0;
+                    buffer.ReadDuration((uint)remainingDuration);
+                    return;
                 }
 
-                // Only reallocate _tempBuffer if needed
-                if (_tempBuffer == null || _tempBuffer.Length < data.Length)
-                {
-                    _tempBuffer = new short[data.Length];
-                }
+                using AudioFrame rawFrame = frameOption.Value;
+                using var frame = audioResampler.RemixAndResample(rawFrame, (uint)channels, (uint)sampleRate);
+                Span<PCMSample> span = frame.AsPCMSampleSpan();
 
-                _numChannels = (uint)channels;
-                _sampleRate = (uint)sampleRate;
+                for (int i = 0; i < span.Length; i++)
+                {
+                    data[dataIndex] = S16ToFloat(span[i].data);
+                    dataIndex++;
+                    if (dataIndex >= data.Length) return;
+                }
 
                 static float S16ToFloat(short v)
                 {
                     return v / 32768f;
-                }
-
-                var temp = MemoryMarshal.Cast<short, byte>(_tempBuffer.AsSpan(0, data.Length));
-                {
-                    using var guard = _buffer!.Lock();
-                    int read = guard.Value.Read(temp);
-                }
-
-                data.Clear();
-                for (int i = 0; i < data.Length; i++)
-                {
-                    data[i] = S16ToFloat(_tempBuffer[i]);
                 }
             }
         }
@@ -109,20 +110,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
-            if (_numChannels == 0)
-                return;
-
-            if (_buffer == null)
-            {
-                Utils.Error("Invalid case, buffer is not set yet");
-                // prevent leak
-                var tempHandle = IFfiHandleFactory.Default.NewFfiHandle(e.FrameReceived.Frame.Handle.Id);
-                tempHandle.Dispose();
-                return;
-            }
-
-            var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
-            audioRemixConveyor.Process(frame, _buffer, _numChannels, _sampleRate);
+            using var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
     }
 }
