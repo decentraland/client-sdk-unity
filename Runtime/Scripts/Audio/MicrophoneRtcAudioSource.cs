@@ -148,7 +148,7 @@ namespace LiveKit.Audio
                     using AudioFrame rawFrame = frameResult.Value;
                     using OwnedAudioFrame frame = audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
 
-                    Span<PCMSample> audioBytes = MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+                    Span<PCMSample> audioBytes = frame.AsPCMSampleSpan();
 
                     var apmFrame = ApmFrame.New(
                         audioBytes,

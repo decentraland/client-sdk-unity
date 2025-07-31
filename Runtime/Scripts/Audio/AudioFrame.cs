@@ -14,6 +14,36 @@ namespace LiveKit.Audio
         public uint SampleRate { get; }
         public uint SamplesPerChannel { get; }
         public IntPtr Data { get; }
+
+        public bool Disposed { get; }
+    }
+
+
+    public static class AudioFrameExtensions
+    {
+        public static Span<byte> AsSpan<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
+        {
+            if (frame.Disposed)
+            {
+                Utils.Error("Attempted to access disposed AudioFrame");
+                return Span<byte>.Empty;
+            }
+
+            unsafe
+            {
+                return new Span<byte>(frame.Data.ToPointer(), frame.Length());
+            }
+        }
+
+        public static Span<PCMSample> AsPCMSampleSpan<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
+        {
+            return MemoryMarshal.Cast<byte, PCMSample>(frame.AsSpan());
+        }
+
+        public static int Length<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
+        {
+            return (int) (frame.SamplesPerChannel * frame.NumChannels * sizeof(short));
+        }
     }
 
 
@@ -26,10 +56,11 @@ namespace LiveKit.Audio
         private readonly NativeArray<byte> _data;
         private readonly IntPtr _dataPtr;
         private bool _disposed;
-        
+
         public IntPtr Data => _dataPtr;
-        public int Length => (int) (SamplesPerChannel * NumChannels * sizeof(short));
+        public int Length => this.Length();
         public bool IsValid => _data.IsCreated && !_disposed;
+        public bool Disposed => _disposed;
 
         internal AudioFrame(uint sampleRate, uint numChannels, uint samplesPerChannel)
         {
@@ -51,20 +82,6 @@ namespace LiveKit.Audio
             {
                 _data.Dispose();
                 _disposed = true;
-            }
-        }
-
-        public Span<byte> AsSpan()
-        {
-            if (_disposed)
-            {
-                Utils.Error("Attempted to access disposed AudioFrame");
-                return Span<byte>.Empty;
-            }
-            
-            unsafe
-            {
-                return new Span<byte>(_dataPtr.ToPointer(), Length);
             }
         }
     }

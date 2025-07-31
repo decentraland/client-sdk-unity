@@ -5,7 +5,7 @@ using LiveKit.Proto;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
-    public readonly struct OwnedAudioFrame : IAudioFrame, IDisposable
+    public struct OwnedAudioFrame : IAudioFrame, IDisposable
     {
         private readonly AudioFrameBufferInfo info;
         private readonly FfiHandle handle;
@@ -14,8 +14,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         public uint SampleRate { get; }
         public uint SamplesPerChannel { get; }
         public IntPtr Data { get; }
-
-        public int Length => (int) (SamplesPerChannel * NumChannels * sizeof(short));
+        public bool Disposed { get; private set; }
 
         public OwnedAudioFrame(OwnedAudioFrameBuffer ownedAudioFrameBuffer)
         {
@@ -25,19 +24,13 @@ namespace LiveKit.Rooms.Streaming.Audio
             NumChannels = info.NumChannels;
             SamplesPerChannel = info.SamplesPerChannel;
             Data = (IntPtr) info.DataPtr;
+            Disposed = false;
         }
 
         public void Dispose()
         {
             handle.Dispose();
-        }
-
-        public Span<byte> AsSpan()
-        {
-            unsafe
-            {
-                return new Span<byte>(Data.ToPointer(), Length);
-            }
+            Disposed = true;
         }
     }
 }
