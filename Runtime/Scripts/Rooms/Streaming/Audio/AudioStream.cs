@@ -13,12 +13,11 @@ namespace LiveKit.Rooms.Streaming.Audio
         private readonly FfiHandle handle;
         private readonly AudioResampler audioResampler = AudioResampler.New();
 
-        private readonly AudioBuffer buffer = new(50);
-        private short[] tempBuffer;
+        private readonly AudioBuffer buffer = new(40);
 
         private bool disposed;
 
-        private long previousTimeStamp;
+        private int currentChannels, currentSampleRate;
 
         public AudioStream(
             IAudioStreams audioStreams,
@@ -49,50 +48,38 @@ namespace LiveKit.Rooms.Streaming.Audio
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
             long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            Debug.Log($"Timestamp diff: {timestampMs - previousTimeStamp} ms");
-            previousTimeStamp = timestampMs;
-
+            Debug.Log($"Read Timestamp: {timestampMs} ms");
+            
             if (disposed)
                 return;
 
+            currentChannels = channels;
+            currentSampleRate = sampleRate;
+
             const int TO_MILLISECONDS = 1000;
-            // We need to pass the exact 10ms chunks, otherwise - crash
-            // Example
-            // #                                                                                             
-            // # Fatal error in: ../common_audio/resampler/push_sinc_resampler.cc, line 52                   
-            // # last system error: 1                                                                        
-            // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
-            // #   
-            const int LIVEKIT_ACCEPTED_DURATION_MS = 10;
 
             int samplesPerChannel = data.Length / channels;
             int requiredDuration = (samplesPerChannel * TO_MILLISECONDS) / sampleRate;
 
-            int remainingDuration = requiredDuration;
-
-            int dataIndex = 0;
-
-            while (remainingDuration > 0)
             {
-                Option<AudioFrame> frameOption = buffer.ReadDuration(LIVEKIT_ACCEPTED_DURATION_MS);
-                remainingDuration -= LIVEKIT_ACCEPTED_DURATION_MS;
+                Option<AudioFrame> frameOption = buffer.ReadDuration((uint)requiredDuration);
+                //remainingDuration -= LIVEKIT_ACCEPTED_DURATION_MS;
                 if (frameOption.Has == false)
                 {
                     Utils.Debug("No more frames to process, fill the rest with silence");
-                    for (; dataIndex < data.Length; dataIndex++) data[dataIndex] = 0;
-                    buffer.ReadDuration((uint)remainingDuration);
+                    //for (; dataIndex < data.Length; dataIndex++) data[dataIndex] = 0;
                     return;
                 }
 
-                using AudioFrame rawFrame = frameOption.Value;
-                using var frame = audioResampler.RemixAndResample(rawFrame, (uint)channels, (uint)sampleRate);
+                using AudioFrame frame = frameOption.Value;
                 Span<PCMSample> span = frame.AsPCMSampleSpan();
 
                 for (int i = 0; i < span.Length; i++)
                 {
-                    data[dataIndex] = S16ToFloat(span[i].data);
-                    dataIndex++;
-                    if (dataIndex >= data.Length) return;
+                    data[i] = S16ToFloat(span[i].data);
+                    // data[dataIndex] = S16ToFloat(span[i].data);
+                    // dataIndex++;
+                    // if (dataIndex >= data.Length) return;
                 }
 
                 static float S16ToFloat(short v)
@@ -110,7 +97,26 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
-            using var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            // We need to pass the exact 10ms chunks, otherwise - crash
+            // Example
+            // #                                                                                             
+            // # Fatal error in: ../common_audio/resampler/push_sinc_resampler.cc, line 52                   
+            // # last system error: 1                                                                        
+            // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
+            // #   
+            using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            if (rawFrame.SamplesPerChannel != 480)
+            {
+                Debug.LogError($"Sample rate doesn't match to 480: {rawFrame.SampleRate}");
+                return;
+            }
+
+            if (currentChannels == 0 || currentSampleRate == 0)
+                return;
+
+            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            Debug.Log($"Event Timestamp: {timestampMs} ms");
+            using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
             buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
     }
