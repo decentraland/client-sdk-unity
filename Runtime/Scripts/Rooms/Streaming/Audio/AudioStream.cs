@@ -13,11 +13,9 @@ namespace LiveKit.Rooms.Streaming.Audio
         private readonly FfiHandle handle;
         private readonly AudioResampler audioResampler = AudioResampler.New();
 
-        private readonly AudioBuffer buffer = new(40);
+        private readonly CapacitiveTestAudioBuffer buffer = new(); //new(40);
 
         private bool disposed;
-
-        private int currentChannels, currentSampleRate;
 
         public AudioStream(
             IAudioStreams audioStreams,
@@ -53,19 +51,23 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (disposed)
                 return;
 
-            currentChannels = channels;
-            currentSampleRate = sampleRate;
+            data.Fill(0);
 
             int samplesPerChannel = data.Length / channels;
 
             {
-                Option<AudioFrame> frameOption = buffer.ReadAsMuchAsHas((uint)samplesPerChannel);
+                Option<AudioFrame> frameOption;
+                lock (buffer)
+                {
+                    frameOption = buffer.Read(
+                        (uint)sampleRate,
+                        (uint)channels,
+                        (uint)samplesPerChannel
+                    );
+                }
 
-                //remainingDuration -= LIVEKIT_ACCEPTED_DURATION_MS;
                 if (frameOption.Has == false)
                 {
-                    Utils.Debug("No more frames to process, fill the rest with silence");
-                    data.Fill(0);
                     return;
                 }
 
@@ -75,12 +77,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                 for (int i = 0; i < span.Length; i++)
                 {
                     data[i] = S16ToFloat(span[i].data);
-                }
-
-                // fill with silence
-                for (int i = span.Length; i < data.Length; i++)
-                {
-                    data[i] = 0;
                 }
 
                 static float S16ToFloat(short v)
@@ -121,7 +117,10 @@ namespace LiveKit.Rooms.Streaming.Audio
             // long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             // Debug.Log($"Event Timestamp: {timestampMs} ms");
             // using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
-            buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
+            lock (buffer)
+            {
+                buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
+            }
         }
     }
 }
