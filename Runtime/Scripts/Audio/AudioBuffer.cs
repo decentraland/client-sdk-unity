@@ -43,7 +43,7 @@ namespace LiveKit.Audio
 
             Capture(s16Data, channels, sampleRate);
         }
-        
+
         internal void Write(ReadOnlySpan<PCMSample> samples, uint channels, uint sampleRate)
         {
             Capture(samples, channels, sampleRate);
@@ -84,6 +84,37 @@ namespace LiveKit.Audio
             if (buffer.AvailableRead() < requiredLength) return Option<AudioFrame>.None;
 
             var frame = new AudioFrame(sampleRate, channels, samplesForDuration);
+            Span<byte> frameData = frame.AsSpan();
+            buffer.Read(frameData);
+
+            return Option<AudioFrame>.Some(frame);
+        }
+
+        internal Option<AudioFrame> Read(uint samplePerChannel)
+        {
+            if (channels == 0 || sampleRate == 0) return Option<AudioFrame>.None;
+
+            var requiredLength = samplePerChannel * channels * sizeof(short);
+            if (buffer.AvailableRead() < requiredLength) return Option<AudioFrame>.None;
+
+            var frame = new AudioFrame(sampleRate, channels, samplePerChannel);
+            Span<byte> frameData = frame.AsSpan();
+            buffer.Read(frameData);
+
+            return Option<AudioFrame>.Some(frame);
+        }
+
+        internal Option<AudioFrame> ReadAsMuchAsHas(uint samplePerChannel)
+        {
+            if (channels == 0 || sampleRate == 0) return Option<AudioFrame>.None;
+
+            var requiredLength = samplePerChannel * channels * sizeof(short);
+            var bytesToRead = Math.Min(buffer.AvailableRead(), requiredLength);
+
+            long availableSamplesPerChannel = bytesToRead / channels;
+            availableSamplesPerChannel /= sizeof(short);
+
+            var frame = new AudioFrame(sampleRate, channels, (uint)availableSamplesPerChannel);
             Span<byte> frameData = frame.AsSpan();
             buffer.Read(frameData);
 
