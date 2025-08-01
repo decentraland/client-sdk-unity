@@ -49,25 +49,23 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             Debug.Log($"Read Timestamp: {timestampMs} ms");
-            
+
             if (disposed)
                 return;
 
             currentChannels = channels;
             currentSampleRate = sampleRate;
 
-            const int TO_MILLISECONDS = 1000;
-
             int samplesPerChannel = data.Length / channels;
-            int requiredDuration = (samplesPerChannel * TO_MILLISECONDS) / sampleRate;
 
             {
-                Option<AudioFrame> frameOption = buffer.ReadDuration((uint)requiredDuration);
+                Option<AudioFrame> frameOption = buffer.ReadAsMuchAsHas((uint)samplesPerChannel);
+
                 //remainingDuration -= LIVEKIT_ACCEPTED_DURATION_MS;
                 if (frameOption.Has == false)
                 {
                     Utils.Debug("No more frames to process, fill the rest with silence");
-                    //for (; dataIndex < data.Length; dataIndex++) data[dataIndex] = 0;
+                    data.Fill(0);
                     return;
                 }
 
@@ -77,9 +75,12 @@ namespace LiveKit.Rooms.Streaming.Audio
                 for (int i = 0; i < span.Length; i++)
                 {
                     data[i] = S16ToFloat(span[i].data);
-                    // data[dataIndex] = S16ToFloat(span[i].data);
-                    // dataIndex++;
-                    // if (dataIndex >= data.Length) return;
+                }
+
+                // fill with silence
+                for (int i = span.Length; i < data.Length; i++)
+                {
+                    data[i] = 0;
                 }
 
                 static float S16ToFloat(short v)
@@ -104,19 +105,22 @@ namespace LiveKit.Rooms.Streaming.Audio
             // # last system error: 1                                                                        
             // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
             // #   
-            using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
-            if (rawFrame.SamplesPerChannel != 480)
-            {
-                Debug.LogError($"Sample rate doesn't match to 480: {rawFrame.SampleRate}");
-                return;
-            }
 
-            if (currentChannels == 0 || currentSampleRate == 0)
-                return;
-
-            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            Debug.Log($"Event Timestamp: {timestampMs} ms");
-            using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
+            using var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            // TODO test
+            //using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            // if (rawFrame.SamplesPerChannel != 480)
+            // {
+            //     Debug.LogError($"Sample rate doesn't match to 480: {rawFrame.SampleRate}");
+            //     return;
+            // }
+            //
+            // if (currentChannels == 0 || currentSampleRate == 0)
+            //     return;
+            //
+            // long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // Debug.Log($"Event Timestamp: {timestampMs} ms");
+            // using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
             buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
     }
