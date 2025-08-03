@@ -1,10 +1,10 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Runtime.Scripts.Audio;
+using Livekit.Types;
 using RichTypes;
 using UnityEngine;
 using UnityEngine.Audio;
@@ -15,7 +15,7 @@ namespace LiveKit.Audio
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
         private readonly AudioResampler audioResampler = AudioResampler.New();
-        private readonly AudioBuffer buffer = new();
+        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
         private readonly object lockObject = new();
 
         private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
@@ -57,7 +57,9 @@ namespace LiveKit.Audio
             this.apm = apm;
         }
 
-        public static Result<MicrophoneRtcAudioSource> New(MicrophoneSelection? microphoneSelection = null, AudioMixerGroup? audioMixerGroup = null)
+        public static Result<MicrophoneRtcAudioSource> New(
+            MicrophoneSelection? microphoneSelection = null,
+            AudioMixerGroup? audioMixerGroup = null)
         {
             MicrophoneSelection selection;
             if (microphoneSelection.HasValue)
@@ -138,37 +140,44 @@ namespace LiveKit.Audio
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
-            lock (lockObject)
+            using var guard = buffer.Lock();
+
+            PCMSample[] converted = new PCMSample[data.Length];
+            for (int i = 0; i < data.Length; i++)
             {
-                buffer.Write(data, (uint)channels, (uint)sampleRate);
-                while (true)
+                converted[i] = PCMSample.FromUnitySample(data[i]);
+            }
+
+            guard.Value.Write(converted, (uint)channels, (uint)sampleRate);
+            while (true)
+            {
+                var ms10ToRead = sampleRate / 100;
+                Option<AudioFrame> frameResult = guard.Value.Read((uint)sampleRate, (uint)channels, (uint)ms10ToRead);
+                if (frameResult.Has == false) break;
+                using AudioFrame rawFrame = frameResult.Value;
+                using OwnedAudioFrame frame =
+                    audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
+
+                Span<PCMSample> audioBytes = frame.AsPCMSampleSpan();
+
+                var apmFrame = ApmFrame.New(
+                    audioBytes,
+                    frame.NumChannels,
+                    frame.SamplesPerChannel,
+                    new SampleRate(frame.SampleRate),
+                    out string? error
+                );
+                if (error != null)
                 {
-                    Option<AudioFrame> frameResult = buffer.ReadDuration(ApmFrame.FRAME_DURATION_MS);
-                    if (frameResult.Has == false) break;
-                    using AudioFrame rawFrame = frameResult.Value;
-                    using OwnedAudioFrame frame = audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
-
-                    Span<PCMSample> audioBytes = frame.AsPCMSampleSpan();
-
-                    var apmFrame = ApmFrame.New(
-                        audioBytes,
-                        frame.NumChannels,
-                        frame.SamplesPerChannel,
-                        new SampleRate(frame.SampleRate),
-                        out string? error
-                    );
-                    if (error != null)
-                    {
-                        Utils.Error($"Error during creation ApmFrame: {error}");
-                        break;
-                    }
-
-                    var apmResult = apm.ProcessStream(apmFrame);
-                    if (apmResult.Success == false)
-                        Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
-
-                    ProcessAudioFrame(frame);
+                    Utils.Error($"Error during creation ApmFrame: {error}");
+                    break;
                 }
+
+                var apmResult = apm.ProcessStream(apmFrame);
+                if (apmResult.Success == false)
+                    Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
+
+                ProcessAudioFrame(frame);
             }
         }
 
@@ -210,10 +219,7 @@ namespace LiveKit.Audio
 
             disposed = true;
 
-            lock (lockObject)
-            {
-                buffer.Dispose();
-            }
+            using (var guard = buffer.Lock()) guard.Value.Dispose();
 
             apm.Dispose();
             audioResampler.Dispose();
