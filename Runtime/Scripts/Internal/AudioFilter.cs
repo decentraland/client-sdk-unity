@@ -42,5 +42,27 @@ namespace LiveKit
         {
             _sampleRate = AudioSettings.outputSampleRate;
         }
+
+
+        #if UNITY_EDITOR
+        [ContextMenu(nameof(StartSource))]
+        public void StartSource()
+        {
+            GetComponent<AudioSource>().Play();
+        }
+
+        [ContextMenu(nameof(StopSource))]
+        public void StopSource()
+        {
+            GetComponent<AudioSource>().Stop();
+        }
+
+        [ContextMenu(nameof(StopSource))]
+        public void LogInfo()
+        {
+            var source = GetComponent<AudioSource>();
+            Debug.Log($"{nameof(AudioFilter)} Source: IsValid - {IsValid}, IsRecording - {source!.isPlaying}");
+        }
+        #endif
     }
 }
