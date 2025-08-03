@@ -3,8 +3,8 @@ using UnityEngine;
 using LiveKit.Proto;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
-using Livekit.Utils;
 using System.Runtime.InteropServices;
+using Livekit.Types;
 
 namespace LiveKit.Audio
 {

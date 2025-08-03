@@ -2,7 +2,7 @@ using System;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Audio;
-using Livekit.Utils;
+using Livekit.Types;
 using RichTypes;
 using UnityEngine;
 

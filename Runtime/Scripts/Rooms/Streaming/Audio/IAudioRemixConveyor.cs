@@ -1,7 +1,7 @@
 ﻿using System;
 using LiveKit.Audio;
 using LiveKit.Internal;
-using Livekit.Utils;
+using Livekit.Types;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {

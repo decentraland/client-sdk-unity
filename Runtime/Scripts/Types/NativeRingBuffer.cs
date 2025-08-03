@@ -3,7 +3,7 @@ using RichTypes;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace LiveKit.Utils
+namespace LiveKit.Types
 {
     /// <summary>
     /// High performance zero allocate ring buffer

@@ -1,5 +1,5 @@
 using System;
-using LiveKit.Utils;
+using LiveKit.Types;
 using RichTypes;
 using UnityEngine;
 
