@@ -2,6 +2,7 @@ using System;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Audio;
+using Livekit.Utils;
 using RichTypes;
 using UnityEngine;
 
@@ -13,14 +14,14 @@ namespace LiveKit.Rooms.Streaming.Audio
         private readonly FfiHandle handle;
         private readonly AudioResampler audioResampler = AudioResampler.New();
 
-        private readonly CapacitiveTestAudioBuffer buffer = new(); //new(40);
+        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
         private bool disposed;
 
         public AudioStream(
             IAudioStreams audioStreams,
             OwnedAudioStream ownedAudioStream,
-            IAudioRemixConveyor audioRemixConveyor
+            IAudioRemixConveyor _ //TODO remove
         )
         {
             this.audioStreams = audioStreams;
@@ -36,7 +37,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             disposed = true;
 
             handle.Dispose();
-            buffer.Dispose();
+            using (var guard = buffer.Lock()) guard.Value.Dispose();
             audioResampler.Dispose();
 
             FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
@@ -57,9 +58,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             {
                 Option<AudioFrame> frameOption;
-                lock (buffer)
+                using (var guard = buffer.Lock())
                 {
-                    frameOption = buffer.Read(
+                    frameOption = guard.Value.Read(
                         (uint)sampleRate,
                         (uint)channels,
                         (uint)samplesPerChannel
@@ -117,10 +118,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             // long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             // Debug.Log($"Event Timestamp: {timestampMs} ms");
             // using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
-            lock (buffer)
-            {
-                buffer.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
-            }
+            using var guard = buffer.Lock();
+            guard.Value.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
     }
 }
