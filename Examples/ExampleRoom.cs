@@ -62,7 +62,13 @@ public class ExampleRoom : MonoBehaviour
                 Debug.Log($"Participant connected: {p.Sid}");
         };
 
-        var c = await m_Room.ConnectAsync(JoinMenu.LivekitURL, JoinMenu.RoomToken, CancellationToken.None, true);
+
+        var c = await m_Room.ConnectAsync(
+            PlayerPrefs.GetString(nameof(JoinMenu.LivekitURL))!,
+            PlayerPrefs.GetString(nameof(JoinMenu.RoomToken))!,
+            CancellationToken.None,
+            true
+        );
 
         if (c.Success == false)
         {
