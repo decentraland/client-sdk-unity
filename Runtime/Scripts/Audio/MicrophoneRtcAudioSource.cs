@@ -16,7 +16,6 @@ namespace LiveKit.Audio
         private const int DEFAULT_NUM_CHANNELS = 2;
         private readonly AudioResampler audioResampler = AudioResampler.New();
         private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
-        private readonly object lockObject = new();
 
         private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
         private readonly Apm apm;

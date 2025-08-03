@@ -22,7 +22,9 @@ namespace LiveKit.Runtime.Scripts.Audio
             internals.audioFilter.AudioRead += AudioFilterOnAudioRead;
         }
 
-        public static DeviceMicrophoneAudioSource New(MicrophoneSelection microphoneSelection, AudioMixerGroup? audioMixerGroup)
+        public static DeviceMicrophoneAudioSource New(
+            MicrophoneSelection microphoneSelection,
+            AudioMixerGroup? audioMixerGroup)
         {
             Internals internals = Internals.New(microphoneSelection, audioMixerGroup);
             return new DeviceMicrophoneAudioSource(internals, audioMixerGroup);
@@ -52,15 +54,25 @@ namespace LiveKit.Runtime.Scripts.Audio
             AudioRead?.Invoke(data, channels, sampleRate);
         }
 
+        [ContextMenu(nameof(StartCapture))]
         public void StartCapture()
         {
             internals.audioSource.Play();
         }
 
+        [ContextMenu(nameof(StopCapture))]
         public void StopCapture()
         {
             internals.audioSource.Stop();
         }
+
+        #if UNITY_EDITOR
+        [ContextMenu(nameof(InfoLog))]
+        public void InfoLog()
+        {
+            Debug.Log($"{nameof(DeviceMicrophoneAudioSource)}: IsValid - {IsValid}, IsRecording - {IsRecording}");
+        }
+        #endif
 
         public bool IsValid => disposed == false && internals.audioFilter.IsValid;
 
