@@ -4,6 +4,7 @@ using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Runtime.Scripts.Audio;
+using LiveKit.Scripts.Audio;
 using Livekit.Types;
 using RichTypes;
 using UnityEngine;
@@ -14,10 +15,15 @@ namespace LiveKit.Audio
     public class MicrophoneRtcAudioSource : IRtcAudioSource, IDisposable
     {
         private const int DEFAULT_NUM_CHANNELS = 2;
-        private readonly AudioResampler audioResampler = AudioResampler.New();
-        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
-        private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
+        private readonly AudioResampler audioResampler = AudioResampler.New();
+
+        //private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
+        private readonly Mutex<CapacitiveTestAudioBuffer> buffer = new(new CapacitiveTestAudioBuffer(1_000));
+
+        private readonly MicrophoneAudioFilter deviceMicrophoneAudioSource;
+
+        //private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
         private readonly GameObject gameObject;
@@ -30,7 +36,7 @@ namespace LiveKit.Audio
         public bool IsRecording => deviceMicrophoneAudioSource.IsRecording;
 
         private MicrophoneRtcAudioSource(
-            DeviceMicrophoneAudioSource deviceMicrophoneAudioSource,
+            MicrophoneAudioFilter deviceMicrophoneAudioSource,
             Apm apm,
             ApmReverseStream? apmReverseStream
         )
@@ -83,11 +89,18 @@ namespace LiveKit.Audio
                 );
             }
 
+            var source = MicrophoneAudioFilter.New();
+            if (source.Success == false)
+            {
+                return Result<MicrophoneRtcAudioSource>.ErrorResult(
+                    $"Cannot create source: {source.ErrorMessage}"
+                );
+            }
 
-            DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection, audioMixerGroup);
+            //DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection, audioMixerGroup);
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
-                new MicrophoneRtcAudioSource(source, apm, reverseStream.Value)
+                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value)
             );
         }
 
@@ -134,7 +147,8 @@ namespace LiveKit.Audio
 
         public void SwitchMicrophone(MicrophoneSelection microphoneSelection)
         {
-            deviceMicrophoneAudioSource.SwitchMicrophone(microphoneSelection);
+            throw new Exception("Not implemented");
+            //    deviceMicrophoneAudioSource.SwitchMicrophone(microphoneSelection);
         }
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
