@@ -5,6 +5,7 @@ using LiveKit.Internal.FFIClients;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Streaming.Audio;
+using UnityEngine;
 
 namespace LiveKit.Internal
 {
@@ -42,6 +43,14 @@ namespace LiveKit.Internal
             uint sampleRate
         ) where TAudioFrame : IAudioFrame
         {
+            var duration = frame.DurationMs();
+            if (duration != 10)
+            {
+                Debug.LogError($"Cannot resample, duration is not 10 ms, instead {duration} ms");
+                //TODO result
+                throw new Exception();
+            }
+            
             using FfiRequestWrap<RemixAndResampleRequest> request = FFIBridge.Instance.NewRequest<RemixAndResampleRequest>();
             using SmartWrap<AudioFrameBufferInfo> audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
             RemixAndResampleRequest remix = request.request;

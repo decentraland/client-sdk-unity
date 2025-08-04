@@ -24,7 +24,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             newStream.Type = AudioStreamType.AudioStreamNative;
 
             // TODO need to adjust at runtime to avoid inconsistencies
-            if (Application.platform is RuntimePlatform.OSXPlayer || Application.platform is RuntimePlatform.OSXPlayer)
+            if (Application.platform is RuntimePlatform.OSXPlayer
+                || Application.platform is RuntimePlatform.OSXEditor
+                || Application.platform is RuntimePlatform.OSXServer)
             {
                 newStream.SampleRate = 44100;
             }

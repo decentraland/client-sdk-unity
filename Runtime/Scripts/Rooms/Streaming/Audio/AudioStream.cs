@@ -16,6 +16,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
+        private int targetChannels;
+        private int targetSampleRate;
+
         private bool disposed;
 
         public AudioStream(
@@ -46,6 +49,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
+            targetChannels = channels;
+            targetSampleRate = sampleRate;
+
             long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             Debug.Log($"Read Timestamp: {timestampMs} ms");
 
@@ -98,21 +104,10 @@ namespace LiveKit.Rooms.Streaming.Audio
             // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
             // #   
 
-            using var frame = new OwnedAudioFrame(e.FrameReceived.Frame);
-            // TODO test
-            //using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
-            // if (rawFrame.SamplesPerChannel != 480)
-            // {
-            //     Debug.LogError($"Sample rate doesn't match to 480: {rawFrame.SampleRate}");
-            //     return;
-            // }
-            //
-            // if (currentChannels == 0 || currentSampleRate == 0)
-            //     return;
-            //
-            // long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            // Debug.Log($"Event Timestamp: {timestampMs} ms");
-            // using var frame = audioResampler.RemixAndResample(rawFrame, (uint)currentChannels, (uint)currentSampleRate);
+            using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
+
+            if (targetChannels == 0 || targetSampleRate == 0) return;
+            using var frame = audioResampler.RemixAndResample(rawFrame, (uint)targetChannels, (uint)targetSampleRate);
             using var guard = buffer.Lock();
             guard.Value.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
