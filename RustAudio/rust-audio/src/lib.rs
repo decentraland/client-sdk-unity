@@ -1,16 +1,17 @@
 use anyhow::{Context, Result, anyhow};
+use arc_swap::ArcSwap;
 use cpal::{
     InputCallbackInfo, Stream, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use crossbeam_channel::{Receiver, Sender, bounded};
+use dashmap::DashMap;
 use lazy_static::lazy_static;
 use std::{
-    collections::HashMap,
     ffi::{CStr, CString},
     os::raw::{c_char, c_void},
     ptr::{self},
-    sync::{Mutex, atomic::AtomicU64},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 struct SafeStream {
@@ -21,9 +22,9 @@ unsafe impl Send for SafeStream {}
 unsafe impl Sync for SafeStream {}
 
 lazy_static! {
-    static ref ERROR_CALLBACK: Mutex<Option<ErrorCallback>> = Mutex::new(None);
+    static ref ERROR_CALLBACK: ArcSwap<Option<ErrorCallback>> = ArcSwap::from_pointee(None);
     static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
-    static ref REGISTRY: Mutex<HashMap<u64, SafeStream>> = Mutex::new(HashMap::new());
+    static ref REGISTRY: DashMap<u64, SafeStream> = DashMap::new();
     static ref DATA_CHANNEL: (Sender<Vec<f32>>, Receiver<Vec<f32>>) = bounded(1);
 }
 
@@ -130,21 +131,20 @@ pub extern "C" fn rust_audio_init(error_callback: Option<ErrorCallback>) -> Resu
         }
     };
 
-    *ERROR_CALLBACK.lock().unwrap() = Some(error_callback);
-
+    ERROR_CALLBACK.store(Arc::new(Some(error_callback)));
     ResultFFI::ok()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_deinit() {
-    *ERROR_CALLBACK.lock().unwrap() = None;
-    REGISTRY.lock().unwrap().clear();
+    ERROR_CALLBACK.store(Arc::new(None));
+    REGISTRY.clear();
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_status() -> Status {
-    let has_error_callback = ERROR_CALLBACK.lock().unwrap().is_some();
-    let streams_count = REGISTRY.lock().unwrap().len() as u64;
+    let has_error_callback = ERROR_CALLBACK.load().is_some();
+    let streams_count = REGISTRY.len() as u64;
 
     Status {
         streams_count,
@@ -257,10 +257,9 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
 
     let config = config_range.with_max_sample_rate().config();
 
-    let mut guard = REGISTRY.lock().unwrap();
     let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    let moved_id = next_id;
+    let _moved_id = next_id;
 
     let stream = device
         .build_input_stream(
@@ -273,8 +272,7 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
                 let content = e.to_string();
                 let c_content = CString::new(content).unwrap_or_default();
 
-                let callback = ERROR_CALLBACK.lock().unwrap();
-                if let Some(cb) = *callback {
+                if let Some(cb) = **ERROR_CALLBACK.load() {
                     cb(c_content.as_ptr());
                 }
             },
@@ -282,15 +280,14 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         )
         .context("cannot build input stream")?;
 
-    guard.insert(next_id, SafeStream { stream });
+    REGISTRY.insert(next_id, SafeStream { stream });
 
     Ok((next_id, config))
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFFI {
-    let guard = REGISTRY.lock().unwrap();
-    let stream = guard.get(&stream_id);
+    let stream = REGISTRY.get(&stream_id);
     match stream {
         Some(s) => {
             let result = s.stream.play().context("cannot play stream");
@@ -301,7 +298,9 @@ pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFF
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_input_stream_consume_frame(stream_id: StreamId) -> ConsumeFrameResult {
+pub extern "C" fn rust_audio_input_stream_consume_frame(
+    _stream_id: StreamId,
+) -> ConsumeFrameResult {
     if let Ok(frame) = DATA_CHANNEL.1.try_recv() {
         if frame.is_empty() {
             return ConsumeFrameResult {
@@ -340,8 +339,7 @@ pub extern "C" fn rust_audio_input_stream_free_frame(ptr: *mut f32, len: i32, ca
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> ResultFFI {
-    let guard = REGISTRY.lock().unwrap();
-    let stream = guard.get(&stream_id);
+    let stream = REGISTRY.get(&stream_id);
     match stream {
         Some(s) => {
             let result = s.stream.pause().context("cannot play stream");
@@ -353,6 +351,5 @@ pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> R
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_input_stream_free(stream_id: StreamId) {
-    let mut guard = REGISTRY.lock().unwrap();
-    guard.remove(&stream_id);
+    REGISTRY.remove(&stream_id);
 }
