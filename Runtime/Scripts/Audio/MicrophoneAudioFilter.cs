@@ -110,6 +110,7 @@ namespace LiveKit.Scripts.Audio
             if (disposed) return;
             disposed = true;
             native.Dispose();
+            instance = null;
         }
     }
 }

@@ -8,6 +8,7 @@ namespace Livekit.Examples.Microphone
     public class MicrophoneCapturePlayground : MonoBehaviour
     {
         [SerializeField] private string microphoneName;
+        private MicrophoneAudioFilter? audioFilter;
 
         private void Start()
         {
@@ -20,13 +21,15 @@ namespace Livekit.Examples.Microphone
                 return;
             }
 
-            //microphone.Value.Dispose();
-            //microphone = MicrophoneAudioFilter.New(microphoneName);
+            microphone.Value.Dispose();
+            microphone = MicrophoneAudioFilter.New(microphoneName);
             if (microphone.Success == false)
             {
                 Debug.LogError($"Microphone error: {microphone.ErrorMessage}");
                 return;
             }
+
+            audioFilter = microphone.Value;
 
             var gm = new GameObject("test");
             var source = gm.AddComponent<AudioSource>();
@@ -34,7 +37,7 @@ namespace Livekit.Examples.Microphone
             playback.Construct(microphone.Value);
 
             source.Play();
-            microphone.Value.StartCapture();
+            audioFilter.StartCapture();
         }
 
         [ContextMenu(nameof(PrintDevices))]
@@ -49,6 +52,12 @@ namespace Livekit.Examples.Microphone
             }
 
             Debug.Log(sb.ToString());
+        }
+
+        private void OnDestroy()
+        {
+            audioFilter?.Dispose();
+            audioFilter = null;
         }
     }
 }
