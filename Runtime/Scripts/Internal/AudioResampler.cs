@@ -6,6 +6,7 @@ using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Streaming.Audio;
 using UnityEngine;
+using UnityEngine.Assertions;
 
 namespace LiveKit.Internal
 {
@@ -32,7 +33,9 @@ namespace LiveKit.Internal
             handle.Dispose();
         }
 
-        public OwnedAudioFrame LiveKitCompatibleRemixAndResample<TAudioFrame>(TAudioFrame frame, uint? overrideNumChannels = null) where TAudioFrame : IAudioFrame
+        public OwnedAudioFrame LiveKitCompatibleRemixAndResample<TAudioFrame>(
+            TAudioFrame frame,
+            uint? overrideNumChannels = null) where TAudioFrame : IAudioFrame
         {
             return RemixAndResample(frame, overrideNumChannels ?? frame.NumChannels, SampleRate.Hz48000.valueHz);
         }
@@ -43,6 +46,9 @@ namespace LiveKit.Internal
             uint sampleRate
         ) where TAudioFrame : IAudioFrame
         {
+            Assert.AreNotEqual(0, sampleRate);
+            Assert.AreNotEqual(0, numChannels);
+
             var duration = frame.DurationMs();
             if (duration != 10) //10 ms required by WebRTC
             {
@@ -50,14 +56,15 @@ namespace LiveKit.Internal
                 //TODO result
                 throw new Exception();
             }
-            
-            using FfiRequestWrap<RemixAndResampleRequest> request = FFIBridge.Instance.NewRequest<RemixAndResampleRequest>();
+
+            using FfiRequestWrap<RemixAndResampleRequest>
+                request = FFIBridge.Instance.NewRequest<RemixAndResampleRequest>();
             using SmartWrap<AudioFrameBufferInfo> audioFrameBufferInfo = request.TempResource<AudioFrameBufferInfo>();
             RemixAndResampleRequest remix = request.request;
-            remix.ResamplerHandle = (ulong) handle.DangerousGetHandle();
+            remix.ResamplerHandle = (ulong)handle.DangerousGetHandle();
 
             remix.Buffer = audioFrameBufferInfo;
-            remix.Buffer.DataPtr = (ulong) frame.Data;
+            remix.Buffer.DataPtr = (ulong)frame.Data;
             remix.Buffer.NumChannels = frame.NumChannels;
             remix.Buffer.SampleRate = frame.SampleRate;
             remix.Buffer.SamplesPerChannel = frame.SamplesPerChannel;

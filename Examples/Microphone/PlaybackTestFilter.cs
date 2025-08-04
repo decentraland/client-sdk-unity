@@ -41,6 +41,9 @@ namespace Livekit.Examples.Microphone
             using var microphoneBufferGuard = microphoneBuffer.Lock();
             microphoneBufferGuard.Value.Write(span, (uint)channels, (uint)sampleRate);
 
+            if (targetChannels == 0 || outputSampleRate == 0)
+                return;
+
             while (true)
             {
                 uint sample10MS = (uint)(sampleRate * 10 / 1000);

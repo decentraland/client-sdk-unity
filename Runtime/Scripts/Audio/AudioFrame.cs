@@ -5,6 +5,7 @@ using LiveKit.Internal.FFIClients.Requests;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.InteropServices;
+using UnityEngine.Assertions;
 
 namespace LiveKit.Audio
 {
@@ -68,6 +69,9 @@ namespace LiveKit.Audio
 
         public AudioFrame(uint sampleRate, uint numChannels, uint samplesPerChannel)
         {
+            Assert.AreNotEqual(0, sampleRate);
+            Assert.AreNotEqual(0, numChannels);
+
             SampleRate = sampleRate;
             NumChannels = numChannels;
             SamplesPerChannel = samplesPerChannel;
