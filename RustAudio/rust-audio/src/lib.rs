@@ -12,11 +12,16 @@ use std::{
     sync::{Mutex, atomic::AtomicU64},
 };
 
+struct SafeStream(Stream);
+
+unsafe impl Send for SafeStream {}
+unsafe impl Sync for SafeStream {}
+
 lazy_static! {
     static ref AUDIO_CALLBACK: Mutex<Option<AudioCallback>> = Mutex::new(None);
     static ref ERROR_CALLBACK: Mutex<Option<ErrorCallback>> = Mutex::new(None);
-    static ref REGISTRY: Mutex<HashMap<StreamId, Stream>> = Mutex::new(HashMap::new());
     static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
+    static ref REGISTRY: Mutex<HashMap<u64, SafeStream>> = Mutex::new(HashMap::new());
 }
 
 pub type AudioCallback = extern "C" fn(u64, *const f32, i32); // StreamId, Data, Len
@@ -285,7 +290,7 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         )
         .context("cannot build input stream")?;
 
-    guard.insert(next_id, stream);
+    guard.insert(next_id, SafeStream(stream));
 
     Ok((next_id, config))
 }
@@ -296,7 +301,7 @@ pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFF
     let stream = guard.get(&stream_id);
     match stream {
         Some(s) => {
-            let result = s.play().context("cannot play stream");
+            let result = s.0.play().context("cannot play stream");
             ResultFFI::from_anyhow(result)
         }
         None => ResultFFI::error("stream with specified id not found"),
@@ -309,7 +314,7 @@ pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> R
     let stream = guard.get(&stream_id);
     match stream {
         Some(s) => {
-            let result = s.pause().context("cannot play stream");
+            let result = s.0.pause().context("cannot play stream");
             ResultFFI::from_anyhow(result)
         }
         None => ResultFFI::error("stream with specified id not found"),
