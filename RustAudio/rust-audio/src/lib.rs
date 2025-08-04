@@ -9,33 +9,34 @@ use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_void},
     ptr,
-    sync::{
-        Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Mutex, atomic::AtomicU64},
 };
 
 lazy_static! {
-    static ref AUDIO_CALLBACK: Mutex<AudioCallback> = Mutex::new(audio_callback_mock);
-    static ref ERROR_CALLBACK: Mutex<ErrorCallback> = Mutex::new(error_callback_mock);
+    static ref AUDIO_CALLBACK: Mutex<Option<AudioCallback>> = Mutex::new(None);
+    static ref ERROR_CALLBACK: Mutex<Option<ErrorCallback>> = Mutex::new(None);
     static ref REGISTRY: Mutex<HashMap<StreamId, Stream>> = Mutex::new(HashMap::new());
     static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
 }
 
-extern "C" fn audio_callback_mock(_: *const f32, _: i32) {}
-extern "C" fn error_callback_mock(_: *const c_char) {}
-
-pub type AudioCallback = extern "C" fn(*const f32, i32);
+pub type AudioCallback = extern "C" fn(u64, *const f32, i32); // StreamId, Data, Len
 
 pub type ErrorCallback = extern "C" fn(*const c_char);
 
 pub type StreamId = u64;
 
 #[repr(C)]
+pub struct Status {
+    pub streams_count: u64,
+    pub has_audio_callback: bool,
+    pub has_error_callback: bool,
+}
+
+#[repr(C)]
 pub struct DeviceNamesResult {
-    names: *const *const c_char,
-    length: i32,
-    error_message: *const c_char,
+    pub names: *const *const c_char,
+    pub length: i32,
+    pub error_message: *const c_char,
 }
 
 #[repr(C)]
@@ -126,17 +127,30 @@ pub extern "C" fn rust_audio_init(
         }
     };
 
-    *AUDIO_CALLBACK.lock().unwrap() = audio_callback;
-    *ERROR_CALLBACK.lock().unwrap() = error_callback;
+    *AUDIO_CALLBACK.lock().unwrap() = Some(audio_callback);
+    *ERROR_CALLBACK.lock().unwrap() = Some(error_callback);
 
     ResultFFI::ok()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_deinit() {
-    *AUDIO_CALLBACK.lock().unwrap() = audio_callback_mock;
-    *ERROR_CALLBACK.lock().unwrap() = error_callback_mock;
+    *AUDIO_CALLBACK.lock().unwrap() = None;
+    *ERROR_CALLBACK.lock().unwrap() = None;
     REGISTRY.lock().unwrap().clear();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_status() -> Status {
+    let has_audio_callback = AUDIO_CALLBACK.lock().unwrap().is_some();
+    let has_error_callback = ERROR_CALLBACK.lock().unwrap().is_some();
+    let streams_count = REGISTRY.lock().unwrap().len() as u64;
+
+    Status {
+        streams_count,
+        has_audio_callback,
+        has_error_callback,
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -214,14 +228,10 @@ pub extern "C" fn rust_audio_input_stream_new(device_name: *const c_char) -> Inp
 
             match rust_audio_input_stream_new_internal(device_name) {
                 Ok(s) => {
-                    let stream = s.0;
+                    let stream_id = s.0;
                     let config = s.1;
 
-                    let mut guard = REGISTRY.lock().unwrap();
-                    let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    guard.insert(next_id, stream);
-
-                    InputStreamResult::ok(next_id, config.sample_rate.0, config.channels as u32)
+                    InputStreamResult::ok(stream_id, config.sample_rate.0, config.channels as u32)
                 }
                 Err(e) => {
                     let message = e.to_string();
@@ -232,7 +242,7 @@ pub extern "C" fn rust_audio_input_stream_new(device_name: *const c_char) -> Inp
     }
 }
 
-fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(Stream, StreamConfig)> {
+fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, StreamConfig)> {
     let host = cpal::default_host();
     let device = host
         .input_devices()
@@ -248,21 +258,36 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(Stream, St
 
     let config = config_range.with_max_sample_rate().config();
 
+    let mut guard = REGISTRY.lock().unwrap();
+    let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let moved_id = next_id;
+
     let stream = device
         .build_input_stream(
             &config,
-            |data: &[f32], _: &InputCallbackInfo| {
-                AUDIO_CALLBACK.lock().unwrap()(data.as_ptr(), data.len() as i32);
+            move |data: &[f32], _: &InputCallbackInfo| {
+                let callback = AUDIO_CALLBACK.lock().unwrap();
+                if let Some(cb) = *callback {
+                    cb(moved_id, data.as_ptr(), data.len() as i32);
+                }
             },
             |e| {
                 let content = e.to_string();
                 let c_content = CString::new(content).unwrap_or_default();
-                ERROR_CALLBACK.lock().unwrap()(c_content.as_ptr());
+
+                let callback = ERROR_CALLBACK.lock().unwrap();
+                if let Some(cb) = *callback {
+                    cb(c_content.as_ptr());
+                }
             },
             None,
         )
         .context("cannot build input stream")?;
-    Ok((stream, config))
+
+    guard.insert(next_id, stream);
+
+    Ok((next_id, config))
 }
 
 #[unsafe(no_mangle)]

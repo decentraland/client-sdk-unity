@@ -12,8 +12,6 @@ namespace Livekit.Examples.Microphone
 
         private void Start()
         {
-            RustAudioClient.ForceReInit();
-            
             var microphone = MicrophoneAudioFilter.New(microphoneName);
             if (microphone.Success == false)
             {
@@ -52,6 +50,21 @@ namespace Livekit.Examples.Microphone
             }
 
             Debug.Log(sb.ToString());
+        }
+        
+        [ContextMenu(nameof(PrintStatus))]
+        public void PrintStatus()
+        {
+            var status = RustAudioClient.SystemStatus();
+            var sb = new StringBuilder();
+            sb.AppendLine(JsonUtility.ToJson(status));
+            Debug.Log(sb.ToString());
+        }
+        
+        [ContextMenu(nameof(ReInit))]
+        public void ReInit()
+        {
+            RustAudioClient.ForceReInit();
         }
 
         private void OnDestroy()

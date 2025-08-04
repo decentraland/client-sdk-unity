@@ -5,6 +5,14 @@ using UnityEngine;
 
 namespace RustAudio
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SystemStatus
+    {
+        public ulong streamsCount;
+        public bool hasAudioCallback;
+        public bool hasErrorCallback;
+    }
+
     internal static class NativeMethods
     {
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN || PLATFORM_STANDALONE_WIN
@@ -14,6 +22,7 @@ namespace RustAudio
 #endif
 
         private const string LIB = "rust_audio" + EXTENSION;
+
 
         [StructLayout(LayoutKind.Sequential)]
         public struct DeviceNamesResult
@@ -26,11 +35,12 @@ namespace RustAudio
         [StructLayout(LayoutKind.Sequential)]
         public struct InputStreamResult
         {
-            public IntPtr streamPtr; // *mut c_void
+            public ulong streamId; // u64
             public uint sampleRate; // u32
             public uint channels; // u32
             public IntPtr errorMessage; // *const c_char
         }
+
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ResultFFI
@@ -40,7 +50,7 @@ namespace RustAudio
 
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void AudioCallback(IntPtr data, int length);
+        public delegate void AudioCallback(ulong streamId, IntPtr data, int length);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void ErrorCallback(IntPtr message);
@@ -50,9 +60,12 @@ namespace RustAudio
             AudioCallback audioCallback,
             ErrorCallback errorCallback
         );
-        
+
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void rust_audio_deinit();
+        internal static extern void rust_audio_deinit();
+
+        [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
+        public static extern SystemStatus rust_audio_status();
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern DeviceNamesResult rust_audio_input_device_names();
@@ -62,9 +75,9 @@ namespace RustAudio
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern void rust_audio_free(IntPtr ptr);
-        
+
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void rust_audio_input_stream_free(IntPtr streamPtr);
+        public static extern void rust_audio_input_stream_free(ulong streamId);
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern InputStreamResult rust_audio_input_stream_new(
@@ -72,16 +85,15 @@ namespace RustAudio
         );
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ResultFFI rust_audio_input_stream_start(IntPtr streamPtr);
+        public static extern ResultFFI rust_audio_input_stream_start(ulong streamId);
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ResultFFI rust_audio_input_stream_pause(IntPtr streamPtr);
+        public static extern ResultFFI rust_audio_input_stream_pause(ulong streamId);
 
         public static Option<string> PtrToStringAndFree(IntPtr ptr)
         {
             if (ptr == IntPtr.Zero)
             {
-                Debug.LogWarning("FFI returned null pointer");
                 return Option<string>.None;
             }
 

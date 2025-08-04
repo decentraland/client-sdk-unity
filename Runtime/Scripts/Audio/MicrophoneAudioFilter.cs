@@ -14,18 +14,11 @@ namespace LiveKit.Scripts.Audio
 
         private bool disposed;
 
-        private static volatile MicrophoneAudioFilter? instance;
-
-        public bool IsRecording { get; private set; }
+        public bool IsRecording => native.IsRecording;
 
         public bool IsValid => disposed == false;
 
         public event IAudioFilter.OnAudioDelegate? AudioRead;
-
-        static MicrophoneAudioFilter()
-        {
-            RustAudioClient.OnAudioRead += AudioCallback;
-        }
 
         private MicrophoneAudioFilter(uint sampleRate, uint channels, string name, RustAudioSource native)
         {
@@ -33,13 +26,20 @@ namespace LiveKit.Scripts.Audio
             Channels = channels;
             Name = name;
             this.native = native;
+
+            native.AudioRead += NativeOnAudioRead;
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            native.AudioRead -= NativeOnAudioRead;
+            native.Dispose();
         }
 
         public static Result<MicrophoneAudioFilter> New(string? microphoneName = null)
         {
-            if (instance != null)
-                return Result<MicrophoneAudioFilter>.ErrorResult("Only single instance allowed per time");
-
             Result<string[]> deviceNames = RustAudioClient.AvailableDeviceNames();
             if (deviceNames.Success == false)
             {
@@ -74,7 +74,7 @@ namespace LiveKit.Scripts.Audio
 
             var rustSource = source.Value;
 
-            instance = new MicrophoneAudioFilter(
+            var instance = new MicrophoneAudioFilter(
                 rustSource.sampleRate,
                 rustSource.channels,
                 name,
@@ -90,9 +90,9 @@ namespace LiveKit.Scripts.Audio
             return result.Success ? result.Value : Array.Empty<string>();
         }
 
-        private static void AudioCallback(Span<float> data)
+        private void NativeOnAudioRead(Span<float> data)
         {
-            instance?.AudioRead?.Invoke(data, (int)instance.Channels, (int)instance.SampleRate);
+            AudioRead?.Invoke(data, (int)Channels, (int)SampleRate);
         }
 
         public void StartCapture()
@@ -103,14 +103,6 @@ namespace LiveKit.Scripts.Audio
         public void StopCapture()
         {
             native.PauseCapture();
-        }
-
-        public void Dispose()
-        {
-            if (disposed) return;
-            disposed = true;
-            native.Dispose();
-            instance = null;
         }
     }
 }

@@ -6,11 +6,13 @@ using UnityEngine;
 
 namespace RustAudio
 {
+    public delegate void OnStreamAudioDelegate(Span<float> data);
+
     public static class RustAudioClient
     {
-        public delegate void OnAudioDelegate(Span<float> data);
+        public delegate void OnAudioDelegate(ulong streamId, Span<float> data);
 
-        public static event OnAudioDelegate OnAudioRead;
+        internal static event OnAudioDelegate OnAudioRead;
 
 #if UNITY_EDITOR
         static RustAudioClient()
@@ -22,11 +24,13 @@ namespace RustAudio
 
         static void OnBeforeAssemblyReload()
         {
-            NativeMethods.rust_audio_deinit();
+            Debug.Log(nameof(OnBeforeAssemblyReload));
+            DeInit();
         }
 
         static void OnAfterAssemblyReload()
         {
+            Debug.Log(nameof(OnAfterAssemblyReload));
             InitializeSdk();
         }
 #else
@@ -66,18 +70,28 @@ namespace RustAudio
 
         public static void ForceReInit()
         {
-            NativeMethods.rust_audio_deinit();
-            Debug.Log("RustAudio deinitialized");
+            DeInit();
             InitializeSdk();
         }
 
+        public static void DeInit()
+        {
+            NativeMethods.rust_audio_deinit();
+            Debug.Log("RustAudio deinitialized");
+        }
+
+        public static SystemStatus SystemStatus()
+        {
+            return NativeMethods.rust_audio_status();
+        }
+
         [MonoPInvokeCallback(typeof(NativeMethods.AudioCallback))]
-        private static void AudioCallback(IntPtr data, int length)
+        private static void AudioCallback(ulong streamId, IntPtr data, int length)
         {
             unsafe
             {
                 Span<float> span = new Span<float>(data.ToPointer(), length);
-                OnAudioRead?.Invoke(span);
+                OnAudioRead?.Invoke(streamId, span);
             }
         }
 
@@ -98,6 +112,13 @@ namespace RustAudio
 
         public static Result<RustAudioSource> NewStream(string deviceName)
         {
+            var status = SystemStatus();
+            if (status.hasAudioCallback == false || status.hasErrorCallback == false)
+            {
+                Debug.LogWarning("Callbacks are missing, initialize sdk");
+                InitializeSdk();
+            }
+
             var result = NativeMethods.rust_audio_input_stream_new(deviceName);
             var error = NativeMethods.PtrToStringAndFree(result.errorMessage);
             if (error.Has)
@@ -106,28 +127,43 @@ namespace RustAudio
             }
 
             return Result<RustAudioSource>.SuccessResult(
-                new RustAudioSource(deviceName, result.streamPtr, result.sampleRate, result.channels)
+                new RustAudioSource(deviceName, result.streamId, result.sampleRate, result.channels)
             );
         }
     }
 
+
     public class RustAudioSource : IDisposable
     {
-        private readonly IntPtr streamPtr;
+        private readonly ulong streamId;
         public readonly string name;
         public readonly uint sampleRate;
         public readonly uint channels;
         private bool disposed;
 
+        public event OnStreamAudioDelegate AudioRead;
+
         public bool IsRecording { get; private set; }
 
-        internal RustAudioSource(string name, IntPtr streamPtr, uint sampleRate, uint channels)
+        internal RustAudioSource(string name, ulong streamId, uint sampleRate, uint channels)
         {
             this.name = name;
-            this.streamPtr = streamPtr;
+            this.streamId = streamId;
             this.sampleRate = sampleRate;
             this.channels = channels;
             IsRecording = false;
+
+            RustAudioClient.OnAudioRead += RustAudioClientOnOnAudioRead;
+
+            Debug.Log("RustAudioSource new");
+        }
+
+        private void RustAudioClientOnOnAudioRead(ulong stream, Span<float> data)
+        {
+            if (streamId == stream)
+            {
+                AudioRead?.Invoke(data);
+            }
         }
 
 
@@ -136,12 +172,17 @@ namespace RustAudio
             if (disposed) return;
             disposed = true;
             IsRecording = false;
-            NativeMethods.rust_audio_input_stream_free(streamPtr);
+            NativeMethods.rust_audio_input_stream_free(streamId);
+            Debug.Log("RustAudioSource disposed");
         }
 
         public void StartCapture()
         {
-            var result = NativeMethods.rust_audio_input_stream_start(streamPtr);
+            if (IsRecording)
+                return;
+
+            Debug.Log("RustAudioSource start");
+            var result = NativeMethods.rust_audio_input_stream_start(streamId);
             var message = NativeMethods.PtrToStringAndFree(result.errorMessage);
             if (message.Has)
             {
@@ -154,7 +195,11 @@ namespace RustAudio
 
         public void PauseCapture()
         {
-            var result = NativeMethods.rust_audio_input_stream_pause(streamPtr);
+            if (IsRecording == false)
+                return;
+
+            Debug.Log("RustAudioSource pause");
+            var result = NativeMethods.rust_audio_input_stream_pause(streamId);
             var message = NativeMethods.PtrToStringAndFree(result.errorMessage);
             if (message.Has)
             {
