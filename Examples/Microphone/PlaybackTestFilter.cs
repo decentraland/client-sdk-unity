@@ -3,6 +3,7 @@ using LiveKit.Audio;
 using LiveKit.Internal;
 using LiveKit.Scripts.Audio;
 using Livekit.Types;
+using RichTypes;
 using UnityEngine;
 
 namespace Livekit.Examples.Microphone
@@ -11,6 +12,7 @@ namespace Livekit.Examples.Microphone
     {
         private readonly Mutex<NativeAudioBuffer> buffer =
             new(new NativeAudioBuffer(bufferDurationMs: 200));
+        private readonly Mutex<NativeAudioBuffer> microphoneBuffer = new(new NativeAudioBuffer(30));
 
         private readonly AudioResampler audioResampler = AudioResampler.New();
         private MicrophoneAudioFilter? microphoneAudioFilter;
@@ -30,14 +32,31 @@ namespace Livekit.Examples.Microphone
             using var guard = buffer.Lock();
             using var frame = new AudioFrame((uint)sampleRate, (uint)channels, (uint)(data.Length / channels));
             var span = frame.AsPCMSampleSpan();
-            
+
             for (int i = 0; i < data.Length; i++)
             {
                 span[i] = PCMSample.FromUnitySample(data[i]);
             }
 
-            using var remix = audioResampler.RemixAndResample(frame, targetChannels, outputSampleRate);
-            guard.Value.Write(remix);
+            using var microphoneBufferGuard = microphoneBuffer.Lock();
+            microphoneBufferGuard.Value.Write(span, (uint)channels, (uint)sampleRate);
+
+            while (true)
+            {
+                uint sample10MS = (uint)(sampleRate * channels * 10 / 1000);
+                Option<AudioFrame> bufferedFrame =
+                    microphoneBufferGuard.Value.Read((uint)sampleRate, (uint)channels, sample10MS);
+                if (bufferedFrame.Has)
+                {
+                    using var b = bufferedFrame.Value;
+                    using var remix = audioResampler.RemixAndResample(b, targetChannels, outputSampleRate);
+                    guard.Value.Write(remix);
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
 
         private void OnAudioFilterRead(float[] data, int channels)
