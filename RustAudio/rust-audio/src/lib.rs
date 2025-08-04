@@ -5,15 +5,21 @@ use cpal::{
 };
 use lazy_static::lazy_static;
 use std::{
+    collections::HashMap,
     ffi::{CStr, CString},
     os::raw::{c_char, c_void},
     ptr,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 lazy_static! {
     static ref AUDIO_CALLBACK: Mutex<AudioCallback> = Mutex::new(audio_callback_mock);
     static ref ERROR_CALLBACK: Mutex<ErrorCallback> = Mutex::new(error_callback_mock);
+    static ref REGISTRY: Mutex<HashMap<StreamId, Stream>> = Mutex::new(HashMap::new());
+    static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
 }
 
 extern "C" fn audio_callback_mock(_: *const f32, _: i32) {}
@@ -22,6 +28,8 @@ extern "C" fn error_callback_mock(_: *const c_char) {}
 pub type AudioCallback = extern "C" fn(*const f32, i32);
 
 pub type ErrorCallback = extern "C" fn(*const c_char);
+
+pub type StreamId = u64;
 
 #[repr(C)]
 pub struct DeviceNamesResult {
@@ -32,16 +40,16 @@ pub struct DeviceNamesResult {
 
 #[repr(C)]
 pub struct InputStreamResult {
-    pub stream_ptr: *mut c_void,
+    pub stream_id: StreamId,
     pub sample_rate: u32,
     pub channels: u32,
     pub error_message: *const c_char,
 }
 
 impl InputStreamResult {
-    fn ok(stream_ptr: *mut c_void, sample_rate: u32, channels: u32) -> Self {
+    fn ok(stream_id: StreamId, sample_rate: u32, channels: u32) -> Self {
         Self {
-            stream_ptr,
+            stream_id,
             sample_rate,
             channels,
             error_message: ptr::null(),
@@ -50,7 +58,7 @@ impl InputStreamResult {
 
     fn error(message: &str) -> Self {
         Self {
-            stream_ptr: ptr::null_mut(),
+            stream_id: 0,
             sample_rate: 0,
             channels: 0,
             error_message: string_to_c_bytes(message),
@@ -86,11 +94,6 @@ impl ResultFFI {
 
 fn string_to_c_bytes(s: &str) -> *const c_char {
     CString::new(s).unwrap_or_default().into_raw()
-}
-
-fn stream_from_ptr<'a>(stream_ptr: *mut c_void) -> &'a mut Stream {
-    assert!(!stream_ptr.is_null(), "stream_ptr is null");
-    unsafe { &mut *(stream_ptr as *mut Stream) }
 }
 
 fn vec_to_c_array(strings: Vec<String>) -> *const *const c_char {
@@ -133,6 +136,7 @@ pub extern "C" fn rust_audio_init(
 pub extern "C" fn rust_audio_deinit() {
     *AUDIO_CALLBACK.lock().unwrap() = audio_callback_mock;
     *ERROR_CALLBACK.lock().unwrap() = error_callback_mock;
+    REGISTRY.lock().unwrap().clear();
 }
 
 #[unsafe(no_mangle)]
@@ -193,9 +197,7 @@ fn rust_audio_input_device_names_internal() -> Result<Vec<String>> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_input_stream_new(
-    device_name: *const c_char,
-) -> InputStreamResult {
+pub extern "C" fn rust_audio_input_stream_new(device_name: *const c_char) -> InputStreamResult {
     {
         if device_name.is_null() {
             return InputStreamResult::error("Device name is null");
@@ -210,20 +212,16 @@ pub extern "C" fn rust_audio_input_stream_new(
                 }
             };
 
-            match rust_audio_input_stream_new_internal(device_name)
-            {
+            match rust_audio_input_stream_new_internal(device_name) {
                 Ok(s) => {
                     let stream = s.0;
                     let config = s.1;
 
-                    let stream = Box::new(stream);
-                    let ptr = Box::into_raw(stream);
+                    let mut guard = REGISTRY.lock().unwrap();
+                    let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    guard.insert(next_id, stream);
 
-                    InputStreamResult::ok(
-                        ptr as *mut c_void,
-                        config.sample_rate.0,
-                        config.channels as u32,
-                    )
+                    InputStreamResult::ok(next_id, config.sample_rate.0, config.channels as u32)
                 }
                 Err(e) => {
                     let message = e.to_string();
@@ -234,9 +232,7 @@ pub extern "C" fn rust_audio_input_stream_new(
     }
 }
 
-fn rust_audio_input_stream_new_internal(
-    device_name: &str
-) -> Result<(Stream, StreamConfig)> {
+fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(Stream, StreamConfig)> {
     let host = cpal::default_host();
     let device = host
         .input_devices()
@@ -270,32 +266,33 @@ fn rust_audio_input_stream_new_internal(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_input_stream_start(stream_ptr: *mut c_void) -> ResultFFI {
-    if stream_ptr.is_null() {
-        return ResultFFI::error("Stream pointer is null");
+pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFFI {
+    let guard = REGISTRY.lock().unwrap();
+    let stream = guard.get(&stream_id);
+    match stream {
+        Some(s) => {
+            let result = s.play().context("cannot play stream");
+            ResultFFI::from_anyhow(result)
+        }
+        None => ResultFFI::error("stream with specified id not found"),
     }
-    let stream = stream_from_ptr(stream_ptr);
-    let result = stream.play().context("cannot play stream");
-    ResultFFI::from_anyhow(result)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_ptr: *mut c_void) -> ResultFFI {
-    if stream_ptr.is_null() {
-        return ResultFFI::error("Stream pointer is null");
+pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> ResultFFI {
+    let guard = REGISTRY.lock().unwrap();
+    let stream = guard.get(&stream_id);
+    match stream {
+        Some(s) => {
+            let result = s.pause().context("cannot play stream");
+            ResultFFI::from_anyhow(result)
+        }
+        None => ResultFFI::error("stream with specified id not found"),
     }
-    let stream = stream_from_ptr(stream_ptr);
-    let result = stream.pause().context("cannot pause stream");
-    ResultFFI::from_anyhow(result)
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_input_stream_free(stream_ptr: *mut c_void) {
-    if !stream_ptr.is_null() {
-        unsafe {
-            let typed_ptr = stream_ptr as *mut Stream;
-            let boxed: Box<Stream> = Box::from_raw(typed_ptr);
-            drop(boxed)
-        };
-    }
+pub extern "C" fn rust_audio_input_stream_free(stream_id: StreamId) {
+    let mut guard = REGISTRY.lock().unwrap();
+    guard.remove(&stream_id);
 }
