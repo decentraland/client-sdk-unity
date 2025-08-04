@@ -3,28 +3,29 @@ use cpal::{
     InputCallbackInfo, Stream, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
+use crossbeam_channel::{Receiver, Sender, bounded};
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
     os::raw::{c_char, c_void},
-    ptr,
+    ptr::{self},
     sync::{Mutex, atomic::AtomicU64},
 };
 
-struct SafeStream(Stream);
+struct SafeStream {
+    stream: Stream,
+}
 
 unsafe impl Send for SafeStream {}
 unsafe impl Sync for SafeStream {}
 
 lazy_static! {
-    static ref AUDIO_CALLBACK: Mutex<Option<AudioCallback>> = Mutex::new(None);
     static ref ERROR_CALLBACK: Mutex<Option<ErrorCallback>> = Mutex::new(None);
     static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
     static ref REGISTRY: Mutex<HashMap<u64, SafeStream>> = Mutex::new(HashMap::new());
+    static ref DATA_CHANNEL: (Sender<Vec<f32>>, Receiver<Vec<f32>>) = bounded(1);
 }
-
-pub type AudioCallback = extern "C" fn(u64, *const f32, i32); // StreamId, Data, Len
 
 pub type ErrorCallback = extern "C" fn(*const c_char);
 
@@ -33,7 +34,6 @@ pub type StreamId = u64;
 #[repr(C)]
 pub struct Status {
     pub streams_count: u64,
-    pub has_audio_callback: bool,
     pub has_error_callback: bool,
 }
 
@@ -49,6 +49,14 @@ pub struct InputStreamResult {
     pub stream_id: StreamId,
     pub sample_rate: u32,
     pub channels: u32,
+    pub error_message: *const c_char,
+}
+
+#[repr(C)]
+pub struct ConsumeFrameResult {
+    pub ptr: *const f32,
+    pub len: i32,
+    pub capacity: i32,
     pub error_message: *const c_char,
 }
 
@@ -114,17 +122,7 @@ fn vec_to_c_array(strings: Vec<String>) -> *const *const c_char {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_init(
-    audio_callback: Option<AudioCallback>,
-    error_callback: Option<ErrorCallback>,
-) -> ResultFFI {
-    let audio_callback = match audio_callback {
-        Some(a) => a,
-        None => {
-            return ResultFFI::error("Audio callback is null");
-        }
-    };
-
+pub extern "C" fn rust_audio_init(error_callback: Option<ErrorCallback>) -> ResultFFI {
     let error_callback = match error_callback {
         Some(e) => e,
         None => {
@@ -132,7 +130,6 @@ pub extern "C" fn rust_audio_init(
         }
     };
 
-    *AUDIO_CALLBACK.lock().unwrap() = Some(audio_callback);
     *ERROR_CALLBACK.lock().unwrap() = Some(error_callback);
 
     ResultFFI::ok()
@@ -140,20 +137,17 @@ pub extern "C" fn rust_audio_init(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_deinit() {
-    *AUDIO_CALLBACK.lock().unwrap() = None;
     *ERROR_CALLBACK.lock().unwrap() = None;
     REGISTRY.lock().unwrap().clear();
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_status() -> Status {
-    let has_audio_callback = AUDIO_CALLBACK.lock().unwrap().is_some();
     let has_error_callback = ERROR_CALLBACK.lock().unwrap().is_some();
     let streams_count = REGISTRY.lock().unwrap().len() as u64;
 
     Status {
         streams_count,
-        has_audio_callback,
         has_error_callback,
     }
 }
@@ -272,10 +266,8 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         .build_input_stream(
             &config,
             move |data: &[f32], _: &InputCallbackInfo| {
-                let callback = AUDIO_CALLBACK.lock().unwrap();
-                if let Some(cb) = *callback {
-                    cb(moved_id, data.as_ptr(), data.len() as i32);
-                }
+                let data = data.to_vec(); // Allocates, but avoids lifetime issues
+                let _ = DATA_CHANNEL.0.try_send(data);
             },
             |e| {
                 let content = e.to_string();
@@ -290,7 +282,7 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         )
         .context("cannot build input stream")?;
 
-    guard.insert(next_id, SafeStream(stream));
+    guard.insert(next_id, SafeStream { stream });
 
     Ok((next_id, config))
 }
@@ -301,10 +293,48 @@ pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFF
     let stream = guard.get(&stream_id);
     match stream {
         Some(s) => {
-            let result = s.0.play().context("cannot play stream");
+            let result = s.stream.play().context("cannot play stream");
             ResultFFI::from_anyhow(result)
         }
         None => ResultFFI::error("stream with specified id not found"),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_input_stream_consume_frame(stream_id: StreamId) -> ConsumeFrameResult {
+    if let Ok(frame) = DATA_CHANNEL.1.try_recv() {
+        if frame.is_empty() {
+            return ConsumeFrameResult {
+                ptr: ptr::null(),
+                len: 0,
+                capacity: 0,
+                error_message: ptr::null(),
+            };
+        }
+
+        let result = ConsumeFrameResult {
+            ptr: frame.as_ptr(),
+            len: frame.len() as i32,
+            capacity: frame.capacity() as i32,
+            error_message: ptr::null(),
+        };
+        std::mem::forget(frame);
+        result
+    } else {
+        ConsumeFrameResult {
+            ptr: ptr::null(),
+            len: 0,
+            capacity: 0,
+            error_message: ptr::null(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_input_stream_free_frame(ptr: *mut f32, len: i32, capacity: i32) {
+    unsafe {
+        let frame = Vec::from_raw_parts(ptr, len as usize, capacity as usize);
+        drop(frame)
     }
 }
 
@@ -314,7 +344,7 @@ pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> R
     let stream = guard.get(&stream_id);
     match stream {
         Some(s) => {
-            let result = s.0.pause().context("cannot play stream");
+            let result = s.stream.pause().context("cannot play stream");
             ResultFFI::from_anyhow(result)
         }
         None => ResultFFI::error("stream with specified id not found"),
