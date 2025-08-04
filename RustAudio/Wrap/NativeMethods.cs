@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 using RichTypes;
-using UnityEngine;
 
 namespace RustAudio
 {
@@ -9,7 +8,7 @@ namespace RustAudio
     public struct SystemStatus
     {
         public ulong streamsCount;
-        public bool hasAudioCallback;
+        [MarshalAs(UnmanagedType.I1)]
         public bool hasErrorCallback;
     }
 
@@ -40,6 +39,15 @@ namespace RustAudio
             public uint channels; // u32
             public IntPtr errorMessage; // *const c_char
         }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ConsumeFrameResult
+        {
+            public IntPtr ptr;                // *const f32
+            public int len;                   // i32
+            public int capacity;              // i32
+            public IntPtr errorMessage;       // *const c_char
+        }
 
 
         [StructLayout(LayoutKind.Sequential)]
@@ -50,14 +58,10 @@ namespace RustAudio
 
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void AudioCallback(ulong streamId, IntPtr data, int length);
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void ErrorCallback(IntPtr message);
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern ResultFFI rust_audio_init(
-            AudioCallback audioCallback,
             ErrorCallback errorCallback
         );
 
@@ -89,6 +93,13 @@ namespace RustAudio
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern ResultFFI rust_audio_input_stream_pause(ulong streamId);
+        
+        [DllImport("rust_audio", CallingConvention = CallingConvention.Cdecl)]
+        public static extern ConsumeFrameResult rust_audio_input_stream_consume_frame(ulong streamId);
+
+        [DllImport("rust_audio", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void rust_audio_input_stream_free_frame(IntPtr ptr, int len, int capacity);
+ 
 
         public static Option<string> PtrToStringAndFree(IntPtr ptr)
         {
