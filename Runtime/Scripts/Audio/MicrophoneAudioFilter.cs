@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using LiveKit.Audio;
+using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using RustAudio;
 
@@ -39,7 +40,7 @@ namespace LiveKit.Scripts.Audio
             native.Dispose();
         }
 
-        public static Result<MicrophoneAudioFilter> New(string? microphoneName = null, bool withPlayback = false)
+        public static Result<MicrophoneAudioFilter> New(MicrophoneSelection? microphoneName = null, bool withPlayback = false)
         {
             Result<string[]> deviceNames = RustAudioClient.AvailableDeviceNames();
             if (deviceNames.Success == false)
@@ -54,18 +55,7 @@ namespace LiveKit.Scripts.Audio
                     "No available input devices");
             }
 
-            string name;
-
-            if (microphoneName == null)
-                name = deviceNames.Value.First();
-            else
-            {
-                if (deviceNames.Value.Any(m => m == microphoneName))
-                    name = microphoneName;
-                else
-                    return Result<MicrophoneAudioFilter>.ErrorResult($"No microphone named: {microphoneName}");
-            }
-
+            string name = microphoneName == null ? deviceNames.Value.First() : microphoneName.Value.name;
             Result<RustAudioSource> source = RustAudioClient.NewStream(name);
 
             if (source.Success == false)

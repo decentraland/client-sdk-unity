@@ -1,5 +1,7 @@
 ﻿using System.Text;
+using LiveKit.Runtime.Scripts.Audio;
 using LiveKit.Scripts.Audio;
+using RichTypes;
 using RustAudio;
 using UnityEngine;
 
@@ -12,7 +14,14 @@ namespace Livekit.Examples.Microphone
 
         private void Start()
         {
-            var microphone = MicrophoneAudioFilter.New(microphoneName, withPlayback: true);
+            Result<MicrophoneSelection> selectionResult = MicrophoneSelection.FromName(microphoneName);
+            if (selectionResult.Success == false)
+            {
+                Debug.LogError($"Microphone error: {selectionResult.ErrorMessage}");
+                return;
+            }
+
+            Result<MicrophoneAudioFilter> microphone = MicrophoneAudioFilter.New(selectionResult.Value, withPlayback: true);
             if (microphone.Success == false)
             {
                 Debug.LogError($"Microphone error: {microphone.ErrorMessage}");

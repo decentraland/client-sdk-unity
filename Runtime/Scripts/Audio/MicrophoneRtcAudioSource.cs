@@ -20,7 +20,7 @@ namespace LiveKit.Audio
 
         private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
-        private readonly MicrophoneAudioFilter deviceMicrophoneAudioSource;
+        private MicrophoneAudioFilter deviceMicrophoneAudioSource;
 
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
@@ -87,7 +87,7 @@ namespace LiveKit.Audio
                 );
             }
 
-            var source = MicrophoneAudioFilter.New(microphoneSelection?.name);
+            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(microphoneSelection);
             if (source.Success == false)
             {
                 return Result<MicrophoneRtcAudioSource>.ErrorResult(
@@ -141,10 +141,26 @@ namespace LiveKit.Audio
                 Start();
         }
 
-        public void SwitchMicrophone(MicrophoneSelection microphoneSelection)
+        public Result SwitchMicrophone(MicrophoneSelection microphoneSelection)
         {
-            throw new Exception("Not implemented");
-            //    deviceMicrophoneAudioSource.SwitchMicrophone(microphoneSelection);
+            Result<MicrophoneAudioFilter> newResult = MicrophoneAudioFilter.New(microphoneSelection);
+            if (newResult.Success == false)
+            {
+                return Result.ErrorResult(
+                    $"Cannot switch microphone to {microphoneSelection.name} due error: {newResult.ErrorMessage}");
+            }
+
+            var wasRecording = IsRecording;
+            deviceMicrophoneAudioSource.StopCapture();
+            deviceMicrophoneAudioSource.Dispose();
+            deviceMicrophoneAudioSource = newResult.Value;
+
+            if (wasRecording)
+            {
+                deviceMicrophoneAudioSource.StartCapture();
+            }
+
+            return Result.SuccessResult();
         }
 
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
