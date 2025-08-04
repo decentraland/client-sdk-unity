@@ -43,7 +43,7 @@ namespace Livekit.Examples.Microphone
 
             while (true)
             {
-                uint sample10MS = (uint)(sampleRate * channels * 10 / 1000);
+                uint sample10MS = (uint)(sampleRate * 10 / 1000);
                 Option<AudioFrame> bufferedFrame =
                     microphoneBufferGuard.Value.Read((uint)sampleRate, (uint)channels, sample10MS);
                 if (bufferedFrame.Has)

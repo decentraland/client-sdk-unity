@@ -44,7 +44,7 @@ namespace LiveKit.Internal
         ) where TAudioFrame : IAudioFrame
         {
             var duration = frame.DurationMs();
-            if (duration != 10)
+            if (duration != 10) //10 ms required by WebRTC
             {
                 Debug.LogError($"Cannot resample, duration is not 10 ms, instead {duration} ms");
                 //TODO result

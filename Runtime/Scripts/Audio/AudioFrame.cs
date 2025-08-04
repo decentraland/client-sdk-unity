@@ -48,7 +48,7 @@ namespace LiveKit.Audio
         public static uint DurationMs<TAudioFrame>(this TAudioFrame frame) where TAudioFrame : IAudioFrame
         {
             if (frame.SampleRate == 0) return 0;
-            return (frame.SamplesPerChannel * 1000u) / frame.SampleRate;
+            return (frame.SamplesPerChannel * 1000) / frame.SampleRate;
         }
     }
 
