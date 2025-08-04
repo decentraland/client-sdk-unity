@@ -1,9 +1,7 @@
 ﻿using System;
-using AOT;
-using LiveKit.Internal;
+using System.Linq;
 using RichTypes;
-using UnityEngine;
-using NativeMethods = RustAudio.NativeMethods;
+using RustAudio;
 
 namespace LiveKit.Scripts.Audio
 {
@@ -12,19 +10,24 @@ namespace LiveKit.Scripts.Audio
         public readonly uint SampleRate;
         public readonly uint Channels;
         public readonly string Name;
-        private readonly IntPtr native;
+        private readonly RustAudioSource native;
 
         private bool disposed;
 
         private static volatile MicrophoneAudioFilter? instance;
 
         public bool IsRecording { get; private set; }
-        
-        public bool IsValid => disposed;
+
+        public bool IsValid => disposed == false;
 
         public event IAudioFilter.OnAudioDelegate? AudioRead;
 
-        private MicrophoneAudioFilter(uint sampleRate, uint channels, string name, IntPtr native)
+        static MicrophoneAudioFilter()
+        {
+            RustAudioClient.OnAudioRead += AudioCallback;
+        }
+
+        private MicrophoneAudioFilter(uint sampleRate, uint channels, string name, RustAudioSource native)
         {
             SampleRate = sampleRate;
             Channels = channels;
@@ -32,12 +35,12 @@ namespace LiveKit.Scripts.Audio
             this.native = native;
         }
 
-        public static Result<MicrophoneAudioFilter> New()
+        public static Result<MicrophoneAudioFilter> New(string? microphoneName = null)
         {
             if (instance != null)
                 return Result<MicrophoneAudioFilter>.ErrorResult("Only single instance allowed per time");
 
-            Result<string[]> deviceNames = NativeMethods.GetDeviceNames();
+            Result<string[]> deviceNames = RustAudioClient.AvailableDeviceNames();
             if (deviceNames.Success == false)
             {
                 return Result<MicrophoneAudioFilter>.ErrorResult(
@@ -50,76 +53,63 @@ namespace LiveKit.Scripts.Audio
                     "No available input devices");
             }
 
-            string name = deviceNames.Value[0];
+            string name;
 
-            NativeMethods.InputStreamResult stream =
-                NativeMethods.rust_audio_input_stream_new(name, AudioCallback, ErrorCallback);
-
-            var error = NativeMethods.PtrToStringAndFree(stream.errorMessage);
-            return error.Has
-                ? Result<MicrophoneAudioFilter>.ErrorResult($"Cannot create new stream: {error.Value}")
-                : Result<MicrophoneAudioFilter>.SuccessResult(
-                    new MicrophoneAudioFilter(
-                        stream.sampleRate,
-                        stream.channels,
-                        name,
-                        stream.streamPtr
-                    )
-                );
-        }
-
-        [MonoPInvokeCallback(typeof(NativeMethods.AudioCallback))]
-        private static void AudioCallback(IntPtr data, int length)
-        {
-            if (instance == null)
-                return;
-
-            unsafe
+            if (microphoneName == null)
+                name = deviceNames.Value.First();
+            else
             {
-                Span<float> span = new Span<float>(data.ToPointer(), length);
-                instance.AudioRead?.Invoke(span, (int)instance.Channels, (int)instance.SampleRate);
+                if (deviceNames.Value.Any(m => m == microphoneName))
+                    name = microphoneName;
+                else
+                    return Result<MicrophoneAudioFilter>.ErrorResult($"No microphone named: {microphoneName}");
             }
+
+            Result<RustAudioSource> source = RustAudioClient.NewStream(name);
+
+            if (source.Success == false)
+            {
+                return Result<MicrophoneAudioFilter>.ErrorResult($"Cannot create new stream: {source.ErrorMessage}");
+            }
+
+            var rustSource = source.Value;
+
+            instance = new MicrophoneAudioFilter(
+                rustSource.sampleRate,
+                rustSource.channels,
+                name,
+                rustSource
+            );
+
+            return Result<MicrophoneAudioFilter>.SuccessResult(instance);
         }
 
-        [MonoPInvokeCallback(typeof(NativeMethods.ErrorCallback))]
-        private static void ErrorCallback(IntPtr msg)
+        public static string[] AvailableDeviceNamesOrEmpty()
         {
-            Option<string> error = NativeMethods.PtrToStringAndFree(msg);
-            if (error.Has)
-                Debug.LogError(error);
+            var result = RustAudioClient.AvailableDeviceNames();
+            return result.Success ? result.Value : Array.Empty<string>();
+        }
+
+        private static void AudioCallback(Span<float> data)
+        {
+            instance?.AudioRead?.Invoke(data, (int)instance.Channels, (int)instance.SampleRate);
         }
 
         public void StartCapture()
         {
-            var result = NativeMethods.rust_audio_input_stream_start(native);
-            var message = NativeMethods.PtrToStringAndFree(result.errorMessage);
-            if (message.Has)
-            {
-                Utils.Error($"Cannot start microphone stream '{Name}' due error: {message.Value}");
-                return;
-            }
-            IsRecording = true;    
+            native.StartCapture();
         }
 
         public void StopCapture()
         {
-            var result = NativeMethods.rust_audio_input_stream_pause(native);
-            var message = NativeMethods.PtrToStringAndFree(result.errorMessage);
-            if (message.Has)
-            {
-                Utils.Error($"Cannot pause microphone stream '{Name}' due error: {message.Value}");
-                return;
-            }
-            IsRecording = false;    
+            native.PauseCapture();
         }
 
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
-            IsRecording = false;    
-            instance = null;
-            NativeMethods.rust_audio_free(native);
+            native.Dispose();
         }
     }
 }

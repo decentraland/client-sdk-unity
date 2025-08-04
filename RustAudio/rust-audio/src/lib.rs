@@ -3,11 +3,25 @@ use cpal::{
     InputCallbackInfo, Stream, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
+use lazy_static::lazy_static;
 use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_void},
     ptr,
+    sync::Mutex,
 };
+
+lazy_static! {
+    static ref AUDIO_CALLBACK: Mutex<AudioCallback> = Mutex::new(audio_callback_mock);
+    static ref ERROR_CALLBACK: Mutex<ErrorCallback> = Mutex::new(error_callback_mock);
+}
+
+extern "C" fn audio_callback_mock(_: *const f32, _: i32) {}
+extern "C" fn error_callback_mock(_: *const c_char) {}
+
+pub type AudioCallback = extern "C" fn(*const f32, i32);
+
+pub type ErrorCallback = extern "C" fn(*const c_char);
 
 #[repr(C)]
 pub struct DeviceNamesResult {
@@ -70,10 +84,6 @@ impl ResultFFI {
     }
 }
 
-pub type AudioCallback = extern "C" fn(*const f32, i32);
-
-pub type ErrorCallback = extern "C" fn(*const c_char);
-
 fn string_to_c_bytes(s: &str) -> *const c_char {
     CString::new(s).unwrap_or_default().into_raw()
 }
@@ -92,6 +102,37 @@ fn vec_to_c_array(strings: Vec<String>) -> *const *const c_char {
     std::mem::forget(boxed_slice);
 
     ptr
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_init(
+    audio_callback: Option<AudioCallback>,
+    error_callback: Option<ErrorCallback>,
+) -> ResultFFI {
+    let audio_callback = match audio_callback {
+        Some(a) => a,
+        None => {
+            return ResultFFI::error("Audio callback is null");
+        }
+    };
+
+    let error_callback = match error_callback {
+        Some(e) => e,
+        None => {
+            return ResultFFI::error("Error callback is null");
+        }
+    };
+
+    *AUDIO_CALLBACK.lock().unwrap() = audio_callback;
+    *ERROR_CALLBACK.lock().unwrap() = error_callback;
+
+    ResultFFI::ok()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_deinit() {
+    *AUDIO_CALLBACK.lock().unwrap() = audio_callback_mock;
+    *ERROR_CALLBACK.lock().unwrap() = error_callback_mock;
 }
 
 #[unsafe(no_mangle)]
@@ -154,26 +195,11 @@ fn rust_audio_input_device_names_internal() -> Result<Vec<String>> {
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_input_stream_new(
     device_name: *const c_char,
-    audio_callback: Option<AudioCallback>,
-    error_callback: Option<ErrorCallback>,
 ) -> InputStreamResult {
     {
         if device_name.is_null() {
             return InputStreamResult::error("Device name is null");
         }
-        let audio_callback = match audio_callback {
-            Some(a) => a,
-            None => {
-                return InputStreamResult::error("Audio callback is null");
-            }
-        };
-
-        let error_callback = match error_callback {
-            Some(e) => e,
-            None => {
-                return InputStreamResult::error("Error callback is null");
-            }
-        };
 
         unsafe {
             let cstr = CStr::from_ptr(device_name);
@@ -184,7 +210,7 @@ pub extern "C" fn rust_audio_input_stream_new(
                 }
             };
 
-            match rust_audio_input_stream_new_internal(device_name, audio_callback, error_callback)
+            match rust_audio_input_stream_new_internal(device_name)
             {
                 Ok(s) => {
                     let stream = s.0;
@@ -209,9 +235,7 @@ pub extern "C" fn rust_audio_input_stream_new(
 }
 
 fn rust_audio_input_stream_new_internal(
-    device_name: &str,
-    audio_read_callback: AudioCallback,
-    error_callback: ErrorCallback,
+    device_name: &str
 ) -> Result<(Stream, StreamConfig)> {
     let host = cpal::default_host();
     let device = host
@@ -231,13 +255,13 @@ fn rust_audio_input_stream_new_internal(
     let stream = device
         .build_input_stream(
             &config,
-            move |data: &[f32], _: &InputCallbackInfo| {
-                audio_read_callback(data.as_ptr(), data.len() as i32);
+            |data: &[f32], _: &InputCallbackInfo| {
+                AUDIO_CALLBACK.lock().unwrap()(data.as_ptr(), data.len() as i32);
             },
-            move |e| {
+            |e| {
                 let content = e.to_string();
                 let c_content = CString::new(content).unwrap_or_default();
-                error_callback(c_content.as_ptr());
+                ERROR_CALLBACK.lock().unwrap()(c_content.as_ptr());
             },
             None,
         )
@@ -263,4 +287,15 @@ pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_ptr: *mut c_void) 
     let stream = stream_from_ptr(stream_ptr);
     let result = stream.pause().context("cannot pause stream");
     ResultFFI::from_anyhow(result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_audio_input_stream_free(stream_ptr: *mut c_void) {
+    if !stream_ptr.is_null() {
+        unsafe {
+            let typed_ptr = stream_ptr as *mut Stream;
+            let boxed: Box<Stream> = Box::from_raw(typed_ptr);
+            drop(boxed)
+        };
+    }
 }

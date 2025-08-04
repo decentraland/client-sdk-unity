@@ -30,5 +30,10 @@ namespace LiveKit.Audio
             else if (sample < S16_MIN_VALUE) sample = S16_MIN_VALUE;
             return new PCMSample((short)(sample + (sample >= 0 ? 0.5f : -0.5f)));
         }
+
+        public float ToFloat()
+        {
+            return data / 32768f;
+        }
     }
 }

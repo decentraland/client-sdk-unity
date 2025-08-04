@@ -77,12 +77,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
                 for (int i = 0; i < span.Length; i++)
                 {
-                    data[i] = S16ToFloat(span[i].data);
-                }
-
-                static float S16ToFloat(short v)
-                {
-                    return v / 32768f;
+                    data[i] = span[i].ToFloat();
                 }
             }
         }

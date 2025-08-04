@@ -237,6 +237,7 @@ namespace LiveKit.Audio
             apm.Dispose();
             audioResampler.Dispose();
             reverseStream?.Dispose();
+            deviceMicrophoneAudioSource.Dispose();
 
             if (handleBorrowed == false)
                 handle.Dispose();

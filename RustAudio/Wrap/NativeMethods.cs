@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace RustAudio
 {
-    public static class NativeMethods
+    internal static class NativeMethods
     {
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN || PLATFORM_STANDALONE_WIN
         private const string EXTENSION = ".dll";
@@ -45,6 +45,14 @@ namespace RustAudio
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void ErrorCallback(IntPtr message);
 
+        [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ResultFFI rust_audio_init(
+            AudioCallback audioCallback,
+            ErrorCallback errorCallback
+        );
+        
+        [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void rust_audio_deinit();
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern DeviceNamesResult rust_audio_input_device_names();
@@ -54,12 +62,13 @@ namespace RustAudio
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern void rust_audio_free(IntPtr ptr);
+        
+        [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void rust_audio_input_stream_free(IntPtr streamPtr);
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]
         public static extern InputStreamResult rust_audio_input_stream_new(
-            [MarshalAs(UnmanagedType.LPStr)] string deviceName,
-            AudioCallback audioCallback,
-            ErrorCallback errorCallback
+            [MarshalAs(UnmanagedType.LPStr)] string deviceName
         );
 
         [DllImport(LIB, CallingConvention = CallingConvention.Cdecl)]

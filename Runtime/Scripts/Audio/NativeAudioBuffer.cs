@@ -18,7 +18,7 @@ namespace LiveKit.Audio
         /// <summary>
         /// Initializes a new audio sample buffer for holding samples for a given duration.
         /// </summary>
-        internal NativeAudioBuffer(uint bufferDurationMs = 10_000)
+        public NativeAudioBuffer(uint bufferDurationMs = 200)
         {
             this.bufferDurationMs = bufferDurationMs;
             buffer = default;
@@ -26,7 +26,12 @@ namespace LiveKit.Audio
             sampleRate = 0;
         }
 
-        internal void Write(ReadOnlySpan<PCMSample> samples, uint channels, uint sampleRate)
+        public void Write<TFrame>(TFrame frame) where TFrame : IAudioFrame
+        {
+            Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
+        }
+
+        public void Write(ReadOnlySpan<PCMSample> samples, uint channels, uint sampleRate)
         {
             Capture(samples, channels, sampleRate);
         }
@@ -48,7 +53,7 @@ namespace LiveKit.Audio
             Debug.Log("Buffer: write");
         }
 
-        internal Option<AudioFrame> Read(uint sampleRate, uint numChannels, uint samplesPerChannel)
+        public Option<AudioFrame> Read(uint sampleRate, uint numChannels, uint samplesPerChannel)
         {
             if (sampleRate != this.sampleRate)
             {
