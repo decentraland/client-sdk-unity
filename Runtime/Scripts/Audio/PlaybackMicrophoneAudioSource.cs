@@ -6,9 +6,9 @@ using Livekit.Types;
 using RichTypes;
 using UnityEngine;
 
-namespace Livekit.Examples.Microphone
+namespace LiveKit.Audio
 {
-    public class PlaybackTestFilter : MonoBehaviour
+    public class PlaybackMicrophoneAudioSource : MonoBehaviour
     {
         private readonly Mutex<NativeAudioBuffer> buffer =
             new(new NativeAudioBuffer(bufferDurationMs: 200));
@@ -20,11 +20,22 @@ namespace Livekit.Examples.Microphone
         private uint outputSampleRate;
         private uint targetChannels;
 
-        public void Construct(MicrophoneAudioFilter newMicrophoneAudioFilter)
+        private void Construct(MicrophoneAudioFilter newMicrophoneAudioFilter)
         {
             microphoneAudioFilter = newMicrophoneAudioFilter;
             microphoneAudioFilter.AudioRead += MicrophoneAudioFilterOnAudioRead;
             outputSampleRate = (uint)AudioSettings.outputSampleRate;
+        }
+
+        public static PlaybackMicrophoneAudioSource New(MicrophoneAudioFilter microphoneAudioFilter)
+        {
+            var gm = new GameObject(nameof(PlaybackMicrophoneAudioSource) + " - " + microphoneAudioFilter.Name); 
+            var source = gm.AddComponent<AudioSource>();
+            var playback = gm.AddComponent<PlaybackMicrophoneAudioSource>();
+            playback.Construct(microphoneAudioFilter);
+            
+            source.Play();
+            return playback;
         }
 
         void MicrophoneAudioFilterOnAudioRead(Span<float> data, int channels, int sampleRate)
@@ -85,13 +96,15 @@ namespace Livekit.Examples.Microphone
             if (microphoneAudioFilter != null)
             {
                 microphoneAudioFilter.AudioRead -= MicrophoneAudioFilterOnAudioRead;
-                microphoneAudioFilter.Dispose();
             }
 
             audioResampler.Dispose();
 
             using var guard = buffer.Lock();
             guard.Value.Dispose();
+            
+            using var microphoneGuard = microphoneBuffer.Lock();
+            microphoneGuard.Value.Dispose();
         }
     }
 }

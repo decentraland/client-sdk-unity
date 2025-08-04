@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using LiveKit.Audio;
 using RichTypes;
 using RustAudio;
 
@@ -38,7 +39,7 @@ namespace LiveKit.Scripts.Audio
             native.Dispose();
         }
 
-        public static Result<MicrophoneAudioFilter> New(string? microphoneName = null)
+        public static Result<MicrophoneAudioFilter> New(string? microphoneName = null, bool withPlayback = false)
         {
             Result<string[]> deviceNames = RustAudioClient.AvailableDeviceNames();
             if (deviceNames.Success == false)
@@ -80,6 +81,11 @@ namespace LiveKit.Scripts.Audio
                 name,
                 rustSource
             );
+
+            if (withPlayback)
+            {
+                PlaybackMicrophoneAudioSource.New(instance);
+            }
 
             return Result<MicrophoneAudioFilter>.SuccessResult(instance);
         }

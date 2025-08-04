@@ -18,12 +18,10 @@ namespace LiveKit.Audio
 
         private readonly AudioResampler audioResampler = AudioResampler.New();
 
-        //private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
-        private readonly Mutex<CapacitiveTestAudioBuffer> buffer = new(new CapacitiveTestAudioBuffer(1_000));
+        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
         private readonly MicrophoneAudioFilter deviceMicrophoneAudioSource;
 
-        //private readonly DeviceMicrophoneAudioSource deviceMicrophoneAudioSource;
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
         private readonly GameObject gameObject;
@@ -89,15 +87,13 @@ namespace LiveKit.Audio
                 );
             }
 
-            var source = MicrophoneAudioFilter.New();
+            var source = MicrophoneAudioFilter.New(microphoneSelection?.name);
             if (source.Success == false)
             {
                 return Result<MicrophoneRtcAudioSource>.ErrorResult(
                     $"Cannot create source: {source.ErrorMessage}"
                 );
             }
-
-            //DeviceMicrophoneAudioSource source = DeviceMicrophoneAudioSource.New(selection, audioMixerGroup);
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
                 new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value)

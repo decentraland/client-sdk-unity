@@ -8,6 +8,7 @@ using LiveKit.Proto;
 using LiveKit.Rooms;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Streaming.Audio;
+using LiveKit.Runtime.Scripts.Audio;
 using UnityEngine.SceneManagement;
 
 public class ExampleRoom : MonoBehaviour
@@ -85,7 +86,17 @@ public class ExampleRoom : MonoBehaviour
         });
 
         // Microphone usage
-        var sourceResult = MicrophoneRtcAudioSource.New();
+        var selectionRaw = PlayerPrefs.GetString(nameof(JoinMenu.MicrophoneSelection));
+        MicrophoneSelection? selection = null;
+        var result = MicrophoneSelection.FromName(selectionRaw);
+        if (result.Success)
+        {
+            selection = result.Value;
+        }
+
+        Debug.Log($"Selected Microphone: {selection?.name}");
+
+        var sourceResult = MicrophoneRtcAudioSource.New(selection);
         if (sourceResult.Success == false)
         {
             Debug.LogError($"Cannot create microphone source: {sourceResult.ErrorMessage}");

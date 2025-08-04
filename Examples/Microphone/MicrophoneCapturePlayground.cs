@@ -12,15 +12,7 @@ namespace Livekit.Examples.Microphone
 
         private void Start()
         {
-            var microphone = MicrophoneAudioFilter.New(microphoneName);
-            if (microphone.Success == false)
-            {
-                Debug.LogError($"Microphone error: {microphone.ErrorMessage}");
-                return;
-            }
-
-            microphone.Value.Dispose();
-            microphone = MicrophoneAudioFilter.New(microphoneName);
+            var microphone = MicrophoneAudioFilter.New(microphoneName, withPlayback: true);
             if (microphone.Success == false)
             {
                 Debug.LogError($"Microphone error: {microphone.ErrorMessage}");
@@ -28,13 +20,6 @@ namespace Livekit.Examples.Microphone
             }
 
             audioFilter = microphone.Value;
-
-            var gm = new GameObject("test");
-            var source = gm.AddComponent<AudioSource>();
-            var playback = gm.AddComponent<PlaybackTestFilter>();
-            playback.Construct(microphone.Value);
-
-            source.Play();
             audioFilter.StartCapture();
         }
 
@@ -51,7 +36,7 @@ namespace Livekit.Examples.Microphone
 
             Debug.Log(sb.ToString());
         }
-        
+
         [ContextMenu(nameof(PrintStatus))]
         public void PrintStatus()
         {
@@ -60,7 +45,7 @@ namespace Livekit.Examples.Microphone
             sb.AppendLine(JsonUtility.ToJson(status));
             Debug.Log(sb.ToString());
         }
-        
+
         [ContextMenu(nameof(ReInit))]
         public void ReInit()
         {

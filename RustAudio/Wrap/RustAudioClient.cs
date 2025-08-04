@@ -12,8 +12,7 @@ namespace RustAudio
 
     public static class RustAudioClient
     {
-
-        #if UNITY_EDITOR
+#if UNITY_EDITOR
         static RustAudioClient()
         {
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -32,24 +31,24 @@ namespace RustAudio
             Debug.Log(nameof(OnAfterAssemblyReload));
             InitializeSdk();
         }
-        #else
+#else
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Init()
         {
             Application.quitting += Quit;
             InitializeSdk();
         }
-        #endif
+#endif
 
         private static void Quit()
         {
-            #if NO_LIVEKIT_MODE
+#if NO_LIVEKIT_MODE
             return;
-            #endif
-            #if UNITY_EDITOR
+#endif
+#if UNITY_EDITOR
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
-            #endif
+#endif
         }
 
         private static void InitializeSdk()
@@ -129,7 +128,7 @@ namespace RustAudio
         public readonly uint sampleRate;
         public readonly uint channels;
 
-        private readonly Thread captureThread;
+        private readonly CancellationTokenSource cancellationTokenSource;
 
         private bool disposed;
 
@@ -147,14 +146,14 @@ namespace RustAudio
 
             Debug.Log("RustAudioSource new");
 
-            captureThread = new Thread(Capture);
-            captureThread.Start();
+            cancellationTokenSource = new CancellationTokenSource();
+            new Thread(Capture).Start();
         }
 
         // Could be optimised later to don't use a separate thread
         private void Capture()
         {
-            while (true)
+            while (cancellationTokenSource.IsCancellationRequested==false)
             {
                 NativeMethods.ConsumeFrameResult frame = NativeMethods.rust_audio_input_stream_consume_frame(streamId);
                 Option<string> error = NativeMethods.PtrToStringAndFree(frame.errorMessage);
@@ -170,7 +169,7 @@ namespace RustAudio
                     {
                         continue;
                     }
-                    
+
                     Span<float> data = new(frame.ptr.ToPointer(), frame.len);
                     AudioRead?.Invoke(data);
                     NativeMethods.rust_audio_input_stream_free_frame(frame.ptr, frame.len, frame.capacity);
@@ -184,7 +183,7 @@ namespace RustAudio
         {
             if (disposed) return;
             disposed = true;
-            captureThread!.Abort();
+            cancellationTokenSource.Cancel();
             IsRecording = false;
             NativeMethods.rust_audio_input_stream_free(streamId);
             Debug.Log("RustAudioSource disposed");

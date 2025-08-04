@@ -1,5 +1,5 @@
-using System;
 using System.Linq;
+using LiveKit.Scripts.Audio;
 using RichTypes;
 using UnityEngine;
 
@@ -24,7 +24,7 @@ namespace LiveKit.Runtime.Scripts.Audio
 
         public static Result<MicrophoneSelection> FromName(string microphoneName)
         {
-            string[] devices = Microphone.devices ?? Array.Empty<string>();
+            string[] devices = Devices();
             foreach (string device in devices)
             {
                 if (device == microphoneName)
@@ -36,10 +36,17 @@ namespace LiveKit.Runtime.Scripts.Audio
 
         public static Result<MicrophoneSelection> FromIndex(int index)
         {
-            string[] devices = Microphone.devices ?? Array.Empty<string>();
+            string[] devices = Devices();
             if (index < 0 || index >= devices.Length)
                 return Result<MicrophoneSelection>.ErrorResult($"Microphone index '{index}' is out of range");
             return Result<MicrophoneSelection>.SuccessResult(new MicrophoneSelection(devices[index]));
+        }
+
+        public static string[] Devices()
+        {
+            //string[] devices = Microphone.devices ?? Array.Empty<string>();
+            string[] devices = MicrophoneAudioFilter.AvailableDeviceNamesOrEmpty();
+            return devices;
         }
     }
 }
