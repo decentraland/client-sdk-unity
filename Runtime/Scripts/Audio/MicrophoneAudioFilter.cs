@@ -13,6 +13,7 @@ namespace LiveKit.Scripts.Audio
         public readonly uint Channels;
         public readonly string Name;
         private readonly RustAudioSource native;
+        private PlaybackMicrophoneAudioSource? lateBindPlaybackProxy;
 
         private bool disposed;
 
@@ -38,9 +39,13 @@ namespace LiveKit.Scripts.Audio
             disposed = true;
             native.AudioRead -= NativeOnAudioRead;
             native.Dispose();
+            if (lateBindPlaybackProxy)
+                UnityEngine.Object.Destroy(lateBindPlaybackProxy);
         }
 
-        public static Result<MicrophoneAudioFilter> New(MicrophoneSelection? microphoneName = null, bool withPlayback = false)
+        public static Result<MicrophoneAudioFilter> New(
+            MicrophoneSelection? microphoneName = null,
+            bool withPlayback = false)
         {
             Result<string[]> deviceNames = RustAudioClient.AvailableDeviceNames();
             if (deviceNames.Success == false)
@@ -74,7 +79,7 @@ namespace LiveKit.Scripts.Audio
 
             if (withPlayback)
             {
-                PlaybackMicrophoneAudioSource.New(instance);
+                instance.lateBindPlaybackProxy = PlaybackMicrophoneAudioSource.New(instance);
             }
 
             return Result<MicrophoneAudioFilter>.SuccessResult(instance);

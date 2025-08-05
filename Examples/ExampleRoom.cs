@@ -24,6 +24,8 @@ public class ExampleRoom : MonoBehaviour
     public Dropdown MicrophoneDropdownMenu;
     public Button DisconnectButton;
     [Space]
+    public bool microphonePlaybackToSpeakers;
+    [Space]
     public AudioMixer audioMixer;
     public string audioHandleName;
 
@@ -105,7 +107,8 @@ public class ExampleRoom : MonoBehaviour
 
         Result<MicrophoneRtcAudioSource> sourceResult = MicrophoneRtcAudioSource.New(
             selection,
-            (audioMixer, audioHandleName)
+            (audioMixer, audioHandleName),
+            microphonePlaybackToSpeakers
         );
         if (sourceResult.Success == false)
         {

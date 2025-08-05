@@ -19,10 +19,10 @@ namespace LiveKit.Audio
         private const int DEFAULT_NUM_CHANNELS = 2;
 
         private readonly AudioResampler audioResampler = AudioResampler.New();
-
         private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
 
         private MicrophoneAudioFilter deviceMicrophoneAudioSource;
+        private readonly bool playbackToSpeakers;
 
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
@@ -41,10 +41,11 @@ namespace LiveKit.Audio
             MicrophoneAudioFilter deviceMicrophoneAudioSource,
             Apm apm,
             ApmReverseStream? apmReverseStream,
-            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume
-        )
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume,
+            bool playbackToSpeakers)
         {
             this.deviceMicrophoneAudioSource = deviceMicrophoneAudioSource;
+            this.playbackToSpeakers = playbackToSpeakers;
             reverseStream = apmReverseStream;
 
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
@@ -78,7 +79,8 @@ namespace LiveKit.Audio
 
         public static Result<MicrophoneRtcAudioSource> New(
             MicrophoneSelection? microphoneSelection = null,
-            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume = null)
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume = null,
+            bool playbackToSpeakers = false)
         {
             MicrophoneSelection selection;
             if (microphoneSelection.HasValue)
@@ -103,7 +105,7 @@ namespace LiveKit.Audio
                 );
             }
 
-            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(selection);
+            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(selection, playbackToSpeakers);
             if (source.Success == false)
             {
                 return Result<MicrophoneRtcAudioSource>.ErrorResult(
@@ -112,7 +114,7 @@ namespace LiveKit.Audio
             }
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
-                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value, audioMixerVolume)
+                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value, audioMixerVolume, playbackToSpeakers)
             );
         }
 
@@ -175,7 +177,7 @@ namespace LiveKit.Audio
 
         public Result SwitchMicrophone(MicrophoneSelection microphoneSelection)
         {
-            Result<MicrophoneAudioFilter> newResult = MicrophoneAudioFilter.New(microphoneSelection);
+            Result<MicrophoneAudioFilter> newResult = MicrophoneAudioFilter.New(microphoneSelection, playbackToSpeakers);
             if (newResult.Success == false)
             {
                 return Result.ErrorResult(
