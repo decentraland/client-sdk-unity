@@ -165,6 +165,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MicrophoneDropdownMenu: {fileID: 1678370709}
   DisconnectButton: {fileID: 1770732189}
+  audioMixer: {fileID: 24100000, guid: e13dfda5812f845699b8f3e7cbd93dd4, type: 2}
+  audioHandleName: MicrophoneVolume
 --- !u!1 &297302484
 GameObject:
   m_ObjectHideFlags: 0

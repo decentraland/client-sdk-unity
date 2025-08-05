@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
@@ -24,10 +26,12 @@ namespace LiveKit.Audio
 
         private readonly Apm apm;
         private readonly ApmReverseStream? reverseStream;
-        private readonly GameObject gameObject;
 
         private bool handleBorrowed;
         private bool disposed;
+
+        private volatile float audioVolumeLinear;
+        private readonly CancellationTokenSource audioVolumeLoopCancellationTokenSource;
 
         private readonly FfiHandle handle;
 
@@ -36,7 +40,8 @@ namespace LiveKit.Audio
         private MicrophoneRtcAudioSource(
             MicrophoneAudioFilter deviceMicrophoneAudioSource,
             Apm apm,
-            ApmReverseStream? apmReverseStream
+            ApmReverseStream? apmReverseStream,
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume
         )
         {
             this.deviceMicrophoneAudioSource = deviceMicrophoneAudioSource;
@@ -58,11 +63,22 @@ namespace LiveKit.Audio
             FfiResponse res = response;
             handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
             this.apm = apm;
+
+            audioVolumeLoopCancellationTokenSource = new CancellationTokenSource();
+            audioVolumeLinear = 1; //max
+            if (audioMixerVolume.HasValue)
+            {
+                VolumePollLoopAsync(
+                    audioMixerVolume.Value.audioMixer!,
+                    audioMixerVolume.Value.audioVolumeParameter!,
+                    audioVolumeLoopCancellationTokenSource.Token
+                ).Forget();
+            }
         }
 
         public static Result<MicrophoneRtcAudioSource> New(
             MicrophoneSelection? microphoneSelection = null,
-            AudioMixerGroup? audioMixerGroup = null)
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume = null)
         {
             MicrophoneSelection selection;
             if (microphoneSelection.HasValue)
@@ -87,7 +103,7 @@ namespace LiveKit.Audio
                 );
             }
 
-            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(microphoneSelection);
+            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(selection);
             if (source.Success == false)
             {
                 return Result<MicrophoneRtcAudioSource>.ErrorResult(
@@ -96,7 +112,7 @@ namespace LiveKit.Audio
             }
 
             return Result<MicrophoneRtcAudioSource>.SuccessResult(
-                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value)
+                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value, audioMixerVolume)
             );
         }
 
@@ -109,6 +125,22 @@ namespace LiveKit.Audio
 
             handleBorrowed = true;
             return handle;
+        }
+
+        private async UniTaskVoid VolumePollLoopAsync(
+            AudioMixer audioMixer,
+            string parameterName,
+            CancellationToken token)
+        {
+            while (token.IsCancellationRequested == false)
+            {
+                if (audioMixer.GetFloat(parameterName, out float volumeDb))
+                {
+                    audioVolumeLinear = Mathf.Pow(10f, volumeDb / 20f);
+                }
+
+                await UniTask.Delay(50, cancellationToken: token).SuppressCancellationThrow(); // ~20Hz
+            }
         }
 
         public void Start()
@@ -168,9 +200,14 @@ namespace LiveKit.Audio
             using var guard = buffer.Lock();
 
             PCMSample[] converted = new PCMSample[data.Length];
+
+            // cache to don't access volatile variable for each sample 
+            var volume = audioVolumeLinear;
+
             for (int i = 0; i < data.Length; i++)
             {
-                converted[i] = PCMSample.FromUnitySample(data[i]);
+                var sample = data[i] * volume;
+                converted[i] = PCMSample.FromUnitySample(sample);
             }
 
             guard.Value.Write(converted, (uint)channels, (uint)sampleRate);
@@ -254,8 +291,7 @@ namespace LiveKit.Audio
             if (handleBorrowed == false)
                 handle.Dispose();
 
-            if (gameObject)
-                UnityEngine.Object.Destroy(gameObject);
+            audioVolumeLoopCancellationTokenSource.Cancel();
         }
     }
 }

@@ -11,6 +11,7 @@ using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
+using UnityEngine.Audio;
 using UnityEngine.SceneManagement;
 
 public class ExampleRoom : MonoBehaviour
@@ -22,6 +23,9 @@ public class ExampleRoom : MonoBehaviour
 
     public Dropdown MicrophoneDropdownMenu;
     public Button DisconnectButton;
+    [Space]
+    public AudioMixer audioMixer;
+    public string audioHandleName;
 
     private void Start()
     {
@@ -99,7 +103,10 @@ public class ExampleRoom : MonoBehaviour
 
         Debug.Log($"Selected Microphone: {selection?.name}");
 
-        Result<MicrophoneRtcAudioSource> sourceResult = MicrophoneRtcAudioSource.New(selection);
+        Result<MicrophoneRtcAudioSource> sourceResult = MicrophoneRtcAudioSource.New(
+            selection,
+            (audioMixer, audioHandleName)
+        );
         if (sourceResult.Success == false)
         {
             Debug.LogError($"Cannot create microphone source: {sourceResult.ErrorMessage}");
