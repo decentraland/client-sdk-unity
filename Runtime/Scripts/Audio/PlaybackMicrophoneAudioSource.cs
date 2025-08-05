@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace LiveKit.Audio
 {
-    public class PlaybackMicrophoneAudioSource : MonoBehaviour
+    public class PlaybackMicrophoneAudioSource : MonoBehaviour, IDisposable
     {
         private readonly Mutex<NativeAudioBuffer> buffer =
             new(new NativeAudioBuffer(bufferDurationMs: 200));
@@ -20,6 +20,8 @@ namespace LiveKit.Audio
         private uint outputSampleRate;
         private uint targetChannels;
 
+        private bool disposed;
+
         private void Construct(MicrophoneAudioFilter newMicrophoneAudioFilter)
         {
             microphoneAudioFilter = newMicrophoneAudioFilter;
@@ -29,11 +31,11 @@ namespace LiveKit.Audio
 
         public static PlaybackMicrophoneAudioSource New(MicrophoneAudioFilter microphoneAudioFilter)
         {
-            var gm = new GameObject(nameof(PlaybackMicrophoneAudioSource) + " - " + microphoneAudioFilter.Name); 
+            var gm = new GameObject(nameof(PlaybackMicrophoneAudioSource) + " - " + microphoneAudioFilter.Name);
             var source = gm.AddComponent<AudioSource>();
             var playback = gm.AddComponent<PlaybackMicrophoneAudioSource>();
             playback.Construct(microphoneAudioFilter);
-            
+
             source.Play();
             return playback;
         }
@@ -93,6 +95,10 @@ namespace LiveKit.Audio
 
         private void OnDestroy()
         {
+            if (disposed)
+                return;
+            disposed = true;
+
             if (microphoneAudioFilter != null)
             {
                 microphoneAudioFilter.AudioRead -= MicrophoneAudioFilterOnAudioRead;
@@ -102,9 +108,15 @@ namespace LiveKit.Audio
 
             using var guard = buffer.Lock();
             guard.Value.Dispose();
-            
+
             using var microphoneGuard = microphoneBuffer.Lock();
             microphoneGuard.Value.Dispose();
+        }
+
+        public void Dispose()
+        {
+            Destroy(this);
+            Destroy(gameObject);
         }
     }
 }

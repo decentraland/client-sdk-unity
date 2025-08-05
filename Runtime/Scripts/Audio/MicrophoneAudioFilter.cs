@@ -40,7 +40,7 @@ namespace LiveKit.Scripts.Audio
             native.AudioRead -= NativeOnAudioRead;
             native.Dispose();
             if (lateBindPlaybackProxy)
-                UnityEngine.Object.Destroy(lateBindPlaybackProxy);
+                lateBindPlaybackProxy.Dispose();
         }
 
         public static Result<MicrophoneAudioFilter> New(
