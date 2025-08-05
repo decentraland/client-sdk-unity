@@ -25,7 +25,7 @@ lazy_static! {
     static ref ERROR_CALLBACK: ArcSwap<Option<ErrorCallback>> = ArcSwap::from_pointee(None);
     static ref NEXT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
     static ref REGISTRY: DashMap<u64, SafeStream> = DashMap::new();
-    static ref DATA_CHANNEL: (Sender<Vec<f32>>, Receiver<Vec<f32>>) = bounded(1);
+    static ref DATA_CHANNELS: DashMap<u64, (Sender<Vec<f32>>, Receiver<Vec<f32>>)> = DashMap::new();
 }
 
 pub type ErrorCallback = extern "C" fn(*const c_char);
@@ -258,15 +258,16 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
     let config = config_range.with_max_sample_rate().config();
 
     let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-    let _moved_id = next_id;
+    let moved_id = next_id;
 
     let stream = device
         .build_input_stream(
             &config,
             move |data: &[f32], _: &InputCallbackInfo| {
                 let data = data.to_vec(); // Allocates, but avoids lifetime issues
-                let _ = DATA_CHANNEL.0.try_send(data);
+                if let Some(channel) = DATA_CHANNELS.get(&moved_id) {
+                    let _ = channel.0.try_send(data);
+                }
             },
             |e| {
                 let content = e.to_string();
@@ -281,6 +282,7 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         .context("cannot build input stream")?;
 
     REGISTRY.insert(next_id, SafeStream { stream });
+    DATA_CHANNELS.insert(next_id, bounded(1));
 
     Ok((next_id, config))
 }
@@ -298,34 +300,35 @@ pub extern "C" fn rust_audio_input_stream_start(stream_id: StreamId) -> ResultFF
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_audio_input_stream_consume_frame(
-    _stream_id: StreamId,
-) -> ConsumeFrameResult {
-    if let Ok(frame) = DATA_CHANNEL.1.try_recv() {
-        if frame.is_empty() {
-            return ConsumeFrameResult {
-                ptr: ptr::null(),
-                len: 0,
-                capacity: 0,
-                error_message: ptr::null(),
-            };
-        }
-
-        let result = ConsumeFrameResult {
-            ptr: frame.as_ptr(),
-            len: frame.len() as i32,
-            capacity: frame.capacity() as i32,
-            error_message: ptr::null(),
-        };
-        std::mem::forget(frame);
-        result
-    } else {
+pub extern "C" fn rust_audio_input_stream_consume_frame(stream_id: StreamId) -> ConsumeFrameResult {
+    fn empty_result() -> ConsumeFrameResult {
         ConsumeFrameResult {
             ptr: ptr::null(),
             len: 0,
             capacity: 0,
             error_message: ptr::null(),
         }
+    }
+
+    if let Some(channel) = DATA_CHANNELS.get(&stream_id) {
+        if let Ok(frame) = channel.1.try_recv() {
+            if frame.is_empty() {
+                return empty_result();
+            }
+
+            let result = ConsumeFrameResult {
+                ptr: frame.as_ptr(),
+                len: frame.len() as i32,
+                capacity: frame.capacity() as i32,
+                error_message: ptr::null(),
+            };
+            std::mem::forget(frame);
+            result
+        } else {
+            empty_result()
+        }
+    } else {
+        empty_result()
     }
 }
 
@@ -352,4 +355,5 @@ pub unsafe extern "C" fn rust_audio_input_stream_pause(stream_id: StreamId) -> R
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_audio_input_stream_free(stream_id: StreamId) {
     REGISTRY.remove(&stream_id);
+    DATA_CHANNELS.remove(&stream_id);
 }
