@@ -151,13 +151,13 @@ namespace LiveKit.Audio
             }
 
             var wasRecording = IsRecording;
-            deviceMicrophoneAudioSource.StopCapture();
+            Stop();
             deviceMicrophoneAudioSource.Dispose();
             deviceMicrophoneAudioSource = newResult.Value;
 
             if (wasRecording)
             {
-                deviceMicrophoneAudioSource.StartCapture();
+                Start();
             }
 
             return Result.SuccessResult();
