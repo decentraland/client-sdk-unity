@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using AOT;
 using RichTypes;
@@ -12,7 +13,7 @@ namespace RustAudio
 
     public static class RustAudioClient
     {
-#if UNITY_EDITOR
+        #if UNITY_EDITOR
         static RustAudioClient()
         {
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -31,24 +32,24 @@ namespace RustAudio
             Debug.Log(nameof(OnAfterAssemblyReload));
             InitializeSdk();
         }
-#else
+        #else
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Init()
         {
             Application.quitting += Quit;
             InitializeSdk();
         }
-#endif
+        #endif
 
         private static void Quit()
         {
-#if NO_LIVEKIT_MODE
+            #if NO_LIVEKIT_MODE
             return;
-#endif
-#if UNITY_EDITOR
+            #endif
+            #if UNITY_EDITOR
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
-#endif
+            #endif
         }
 
         private static void InitializeSdk()
@@ -148,12 +149,15 @@ namespace RustAudio
 
             cancellationTokenSource = new CancellationTokenSource();
             new Thread(Capture).Start();
+            #if UNITY_EDITOR
+            Info.Register(streamId, this);
+            #endif
         }
 
         // Could be optimised later to don't use a separate thread
         private void Capture()
         {
-            while (cancellationTokenSource.IsCancellationRequested==false)
+            while (cancellationTokenSource.IsCancellationRequested == false)
             {
                 NativeMethods.ConsumeFrameResult frame = NativeMethods.rust_audio_input_stream_consume_frame(streamId);
                 Option<string> error = NativeMethods.PtrToStringAndFree(frame.errorMessage);
@@ -187,6 +191,9 @@ namespace RustAudio
             IsRecording = false;
             NativeMethods.rust_audio_input_stream_free(streamId);
             Debug.Log("RustAudioSource disposed");
+            #if UNITY_EDITOR
+            Info.Unregister(streamId);
+            #endif
         }
 
         public void StartCapture()
@@ -222,5 +229,36 @@ namespace RustAudio
 
             IsRecording = false;
         }
+
+        #if UNITY_EDITOR
+        public static class Info
+        {
+            private static readonly Dictionary<ulong, RustAudioSource> activeSources = new();
+
+            public static void Register(ulong id, RustAudioSource source)
+            {
+                lock (activeSources)
+                {
+                    activeSources.Add(id, source);
+                }
+            }
+
+            public static void Unregister(ulong id)
+            {
+                lock (activeSources)
+                {
+                    activeSources.Remove(id);
+                }
+            }
+
+            public static IReadOnlyDictionary<ulong, RustAudioSource> ActiveSources()
+            {
+                lock (activeSources)
+                {
+                    return activeSources;
+                }
+            }
+        }
+        #endif
     }
 }
