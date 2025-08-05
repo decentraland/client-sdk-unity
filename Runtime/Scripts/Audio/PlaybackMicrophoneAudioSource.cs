@@ -44,7 +44,13 @@ namespace LiveKit.Audio
         {
             using var guard = buffer.Lock();
             using var frame = new AudioFrame((uint)sampleRate, (uint)channels, (uint)(data.Length / channels));
-            var span = frame.AsPCMSampleSpan();
+            Span<PCMSample> span = frame.AsPCMSampleSpan();
+
+            if (span.Length != data.Length)
+            {
+                Debug.LogError($"Inconsistent data frame: data length - {data.Length}, PCM sample length - {span.Length}");
+                return;
+            }
 
             for (int i = 0; i < data.Length; i++)
             {
