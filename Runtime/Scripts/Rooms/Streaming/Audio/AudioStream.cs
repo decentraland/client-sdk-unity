@@ -4,7 +4,6 @@ using LiveKit.Proto;
 using LiveKit.Audio;
 using Livekit.Types;
 using RichTypes;
-using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
@@ -51,9 +50,6 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             targetChannels = channels;
             targetSampleRate = sampleRate;
-
-            long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            Debug.Log($"Read Timestamp: {timestampMs} ms");
 
             if (disposed)
                 return;
@@ -104,7 +100,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
             // #   
 
-            using var rawFrame = new OwnedAudioFrame(e.FrameReceived.Frame);
+            using var rawFrame = new OwnedAudioFrame(e.FrameReceived!.Frame!);
 
             if (targetChannels == 0 || targetSampleRate == 0) return;
             using var frame = audioResampler.RemixAndResample(rawFrame, (uint)targetChannels, (uint)targetSampleRate);

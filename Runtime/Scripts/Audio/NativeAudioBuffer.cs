@@ -50,7 +50,6 @@ namespace LiveKit.Audio
             }
 
             buffer.Enqueue(data);
-            Debug.Log("Buffer: write");
         }
 
         public Option<AudioFrame> Read(uint sampleRate, uint numChannels, uint samplesPerChannel)
