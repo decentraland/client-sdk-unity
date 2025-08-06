@@ -54,6 +54,12 @@ namespace LiveKit.Audio
 
         public Option<AudioFrame> Read(uint sampleRate, uint numChannels, uint samplesPerChannel)
         {
+            if (this.sampleRate == 0)
+            {
+                Debug.LogError("Buffer: attempt to read from an initialized buffer");
+                return Option<AudioFrame>.None;
+            }
+
             if (sampleRate != this.sampleRate)
             {
                 Debug.LogError($"Buffer: sample rate doesn't match: required - {sampleRate}, real - {this.sampleRate}");

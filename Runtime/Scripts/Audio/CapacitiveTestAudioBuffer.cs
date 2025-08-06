@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace LiveKit.Audio
 {
+    [Obsolete("Has been used only for tests, saved as a reference")]
     public class CapacitiveTestAudioBuffer : IDisposable
     {
         private readonly uint bufferDurationMs;
