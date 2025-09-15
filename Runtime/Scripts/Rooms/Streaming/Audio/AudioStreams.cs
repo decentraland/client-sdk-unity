@@ -1,4 +1,5 @@
-﻿using LiveKit.Internal.FFIClients.Requests;
+﻿using LiveKit.Internal.FFIClients;
+using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Tracks;
@@ -6,17 +7,13 @@ using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
-    public class AudioStreams : Streams<IAudioStream>, IAudioStreams
+    public class AudioStreams : Streams<AudioStream>, IAudioStreams
     {
-        private readonly IAudioRemixConveyor remixConveyor;
-
-        public AudioStreams(IParticipantsHub participantsHub, IAudioRemixConveyor remixConveyor) : base(participantsHub,
-            TrackKind.KindAudio)
+        public AudioStreams(IParticipantsHub participantsHub) : base(participantsHub, TrackKind.KindAudio)
         {
-            this.remixConveyor = remixConveyor;
         }
 
-        protected override IAudioStream NewStreamInstance(ITrack track)
+        protected override AudioStream NewStreamInstance(ITrack track)
         {
             using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
             var newStream = request.request;
@@ -37,11 +34,11 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             newStream.NumChannels = 2;
 
-            using var response = request.Send();
+            using FfiResponseWrap response = request.Send();
             FfiResponse res = response;
 
-            var streamInfo = res.NewAudioStream!.Stream;
-            return new AudioStream(this, streamInfo!, remixConveyor);
+            OwnedAudioStream streamInfo = res.NewAudioStream!.Stream!;
+            return new AudioStream(this, streamInfo);
         }
     }
 }

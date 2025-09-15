@@ -7,7 +7,7 @@ using RichTypes;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
-    public class AudioStream : IAudioStream
+    public class AudioStream : IDisposable
     {
         private readonly IAudioStreams audioStreams;
         private readonly FfiHandle handle;
@@ -22,8 +22,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public AudioStream(
             IAudioStreams audioStreams,
-            OwnedAudioStream ownedAudioStream,
-            IAudioRemixConveyor _ //TODO remove
+            OwnedAudioStream ownedAudioStream
         )
         {
             this.audioStreams = audioStreams;
@@ -46,6 +45,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             audioStreams.Release(this);
         }
 
+        /// <summary>
+        /// Supposed to be called from Unity's audio thread.
+        /// </summary>
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
             targetChannels = channels;

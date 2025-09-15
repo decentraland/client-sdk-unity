@@ -8,8 +8,10 @@ using LiveKit.Audio;
 using LiveKit.Proto;
 using LiveKit.Rooms;
 using LiveKit.Rooms.Participants;
+using LiveKit.Rooms.Streaming;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Runtime.Scripts.Audio;
+using LiveKit.Types;
 using RichTypes;
 using UnityEngine.Audio;
 using UnityEngine.SceneManagement;
@@ -19,7 +21,7 @@ public class ExampleRoom : MonoBehaviour
     private Room? m_Room;
     private MicrophoneRtcAudioSource? microphoneSource;
 
-    private readonly Dictionary<IAudioStream, LivekitAudioSource> sourcesMap = new();
+    private readonly Dictionary<StreamKey, LivekitAudioSource> sourcesMap = new();
 
     public Dropdown MicrophoneDropdownMenu;
     public Button DisconnectButton;
@@ -41,21 +43,28 @@ public class ExampleRoom : MonoBehaviour
             var participant = m_Room.Participants.RemoteParticipant(remoteParticipantIdentity)!;
             foreach (var (key, value) in participant.Tracks)
             {
-                var track = m_Room.AudioStreams.ActiveStream(remoteParticipantIdentity, key!);
-                if (track != null)
+                StreamKey streamKey = new StreamKey(remoteParticipantIdentity, key);
+                if (sourcesMap.ContainsKey(streamKey))
                 {
-                    if (track.TryGetTarget(out var audioStream))
-                    {
-                        if (sourcesMap.ContainsKey(audioStream) == false)
-                        {
-                            var livekitAudioSource = LivekitAudioSource.New(true);
-                            livekitAudioSource.Construct(track);
-                            livekitAudioSource.Play();
-                            Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
-                            sourcesMap[audioStream] = livekitAudioSource;
-                        }
-                    }
+                    continue;
                 }
+                
+                var status = m_Room.AudioStreams.TryBorrowStream(
+                    remoteParticipantIdentity,
+                    key,
+                    out Weak<AudioStream> stream
+                );
+
+                if (status is not BorrowResult.Success)
+                {
+                    continue;
+                }
+                
+                var livekitAudioSource = LivekitAudioSource.New(true);
+                livekitAudioSource.Construct(stream);
+                livekitAudioSource.Play();
+                Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
+                sourcesMap[streamKey] = livekitAudioSource;
             }
         }
     }
