@@ -8,6 +8,7 @@ using Cysharp.Threading.Tasks;
 using Examples;
 using LiveKit;
 using LiveKit.Audio;
+using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Rooms;
 using LiveKit.Rooms.Participants;
@@ -36,8 +37,9 @@ public class ExampleRoom : MonoBehaviour
     [SerializeField] private TextAsset botTokens;
     [SerializeField] private AudioClip botClip;
     [SerializeField] private List<BotParticipant> bots = new();
+    [SerializeField] private BotCaptureMode botCaptureMode = BotCaptureMode.FromMicrophone;
     
-    private readonly List<(Room room, GameObject bot)> botInstances= new();
+    private readonly List<(Room room, IRtcAudioSource bot)> botInstances= new();
 
     private void Start()
     {
@@ -171,7 +173,7 @@ public class ExampleRoom : MonoBehaviour
         );
         foreach (var botInstance in botInstances)
         {
-            Destroy(botInstance.bot);
+            botInstance.bot.Dispose();
         }
 
         botInstances.Clear();
@@ -189,14 +191,7 @@ public class ExampleRoom : MonoBehaviour
             Room room = new Room();
             await room.ConnectAsync(url, botParticipant.token, destroyCancellationToken, false);
 
-            GameObject gm = new GameObject($"bot_{botId}");
-            AudioSource audioSource = gm.AddComponent<AudioSource>()!;
-            audioSource.clip = botParticipant.audioClip;
-            AudioFilter filter = gm.AddComponent<AudioFilter>()!;
-            filter.EnableSilenceAfterCapture();
-
-            RtcAudioSource source = new RtcAudioSource(audioSource, filter);
-            
+            IRtcAudioSource source = NewBotAudioSource(botCaptureMode, botId, botParticipant.audioClip);
             source.Start();
 
             var myTrack = room.AudioTracks.CreateAudioTrack("own", source);
@@ -214,9 +209,49 @@ public class ExampleRoom : MonoBehaviour
             
             Debug.Log($"Bot publish finished: {botId}");
             
-            botInstances.Add((room, gm));
+            botInstances.Add((room, source));
             botId++;
         }
+    }
+
+    private IRtcAudioSource NewBotAudioSource(BotCaptureMode captureMode, int id, AudioClip? audioClip)
+    {
+        if (captureMode is BotCaptureMode.FromMicrophone)
+        {
+            MicrophoneSelection? selection = null;
+            Result<MicrophoneSelection> result = MicrophoneDropdown.CurrentMicrophoneSelection();
+            if (result.Success)
+            {
+                selection = result.Value;
+            }
+
+            Debug.Log($"Selected Microphone: {selection?.name}");
+            Result<MicrophoneRtcAudioSource> sourceResult = MicrophoneRtcAudioSource.New(
+                selection,
+                (audioMixer, audioHandleName),
+                microphonePlaybackToSpeakers
+            );
+            if (sourceResult.Success == false)
+            {
+                Debug.LogError($"Cannot create microphone source: {sourceResult.ErrorMessage}");
+                throw new Exception();
+            }
+
+            var botSource = sourceResult.Value;
+            botSource.Start();
+
+            MicrophoneDropdown.Bind(MicrophoneDropdownMenu, botSource);
+            return botSource;
+        }
+        
+        GameObject gm = new GameObject($"bot_{id}");
+        AudioSource audioSource = gm.AddComponent<AudioSource>()!;
+        audioSource.clip = audioClip!;
+        audioSource.Play();
+        AudioFilter filter = gm.AddComponent<AudioFilter>()!;
+        gm.AddComponent<OmitAudioFilter>();
+
+        return new RtcAudioSource(audioSource, filter);
     }
 }
 
@@ -225,4 +260,10 @@ public struct BotParticipant
 {
     public string token;
     public AudioClip audioClip;
+}
+
+public enum BotCaptureMode
+{
+    FromClip,
+    FromMicrophone
 }

@@ -187,5 +187,11 @@ namespace LiveKit.Audio
                 Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
             }
         }
+
+        public void Dispose()
+        {
+            Stop();
+            UnityEngine.Object.Destroy(audioSource.gameObject);
+        }
     }
 }
