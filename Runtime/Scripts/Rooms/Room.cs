@@ -90,8 +90,7 @@ namespace LiveKit.Rooms
             new DataPipe(),
             new MemoryRoomInfo(),
             new VideoStreams(capturedHub),
-            new AudioStreams(capturedHub,
-                new IAudioRemixConveyor.SameThreadAudioRemixConveyor()),
+            new AudioStreams(capturedHub),
             null! // AudioTracks will be created after Room construction
         )
         {

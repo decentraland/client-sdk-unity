@@ -22,8 +22,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public AudioStream(
             IAudioStreams audioStreams,
-            OwnedAudioStream ownedAudioStream,
-            IAudioRemixConveyor _ //TODO remove
+            OwnedAudioStream ownedAudioStream
         )
         {
             this.audioStreams = audioStreams;
@@ -106,6 +105,10 @@ namespace LiveKit.Rooms.Streaming.Audio
             using var frame = audioResampler.RemixAndResample(rawFrame, (uint)targetChannels, (uint)targetSampleRate);
             using var guard = buffer.Lock();
             guard.Value.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
+            
+            // TODO
+            // SIMD integration
+            // MOVE UNITY sampling to buffer already, don't do it on audio thread
         }
     }
 }
