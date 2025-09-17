@@ -23,22 +23,22 @@ public class ExampleRoom : MonoBehaviour
     private MicrophoneRtcAudioSource? microphoneSource;
 
     private readonly Dictionary<IAudioStream, LivekitAudioSource> sourcesMap = new();
+    private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
 
     public Dropdown MicrophoneDropdownMenu;
     public Button DisconnectButton;
-    [Space]
-    public bool microphonePlaybackToSpeakers;
-    [Space]
-    public AudioMixer audioMixer;
+    [Space] public bool microphonePlaybackToSpeakers;
+    [Space] public AudioMixer audioMixer;
     public string audioHandleName;
+    [SerializeField] private Toggle enableAudioSources;
 
-    [Header("Bot Speakers")]
-    [SerializeField] private TextAsset botTokens;
+    [Header("Bot Speakers")] [SerializeField]
+    private TextAsset botTokens;
+
     [SerializeField] private AudioClip botClip;
     [SerializeField] private List<BotParticipant> bots = new();
     [SerializeField] private BotCaptureMode botCaptureMode = BotCaptureMode.FromMicrophone;
 
-    private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
 
     private void Start()
     {
@@ -73,6 +73,15 @@ public class ExampleRoom : MonoBehaviour
 
     private async UniTaskVoid StartAsync()
     {
+        enableAudioSources.onValueChanged.AddListener(v =>
+        {
+            foreach (KeyValuePair<IAudioStream, LivekitAudioSource> pair in sourcesMap)
+            {
+                if (v) pair.Value.Play();
+                else pair.Value.Stop();
+            }
+        });
+
         var tokens = botTokens ? botTokens.text!.Split('\n')! : Array.Empty<string>();
         bots = tokens.Select(t => new BotParticipant { token = t, audioClip = botClip }).ToList();
 
