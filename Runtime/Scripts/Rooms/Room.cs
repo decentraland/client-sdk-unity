@@ -91,7 +91,7 @@ namespace LiveKit.Rooms
             new MemoryRoomInfo(),
             new VideoStreams(capturedHub),
             new AudioStreams(capturedHub),
-            null! // AudioTracks will be created after Room construction
+            null // AudioTracks will be created after Room construction
         )
         {
         }
@@ -108,7 +108,7 @@ namespace LiveKit.Rooms
             IMutableRoomInfo roomInfo,
             IVideoStreams videoStreams,
             IAudioStreams audioStreams,
-            IAudioTracks audioTracks
+            IAudioTracks? audioTracks
         )
         {
             this.memoryPool = memoryPool;
