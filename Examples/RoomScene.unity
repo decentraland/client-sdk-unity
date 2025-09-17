@@ -174,6 +174,7 @@ MonoBehaviour:
   botTokens: {fileID: 4900000, guid: e764b6bb07004b709c059485ba1ef214, type: 3}
   botClip: {fileID: 8300000, guid: 2215cac0cd3f0469d85d9940223b037d, type: 3}
   bots: []
+  botCaptureMode: 0
 --- !u!1 &297302484
 GameObject:
   m_ObjectHideFlags: 0

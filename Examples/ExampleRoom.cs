@@ -8,7 +8,6 @@ using Cysharp.Threading.Tasks;
 using Examples;
 using LiveKit;
 using LiveKit.Audio;
-using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Rooms;
 using LiveKit.Rooms.Participants;
@@ -244,14 +243,7 @@ public class ExampleRoom : MonoBehaviour
             return botSource;
         }
         
-        GameObject gm = new GameObject($"bot_{id}");
-        AudioSource audioSource = gm.AddComponent<AudioSource>()!;
-        audioSource.clip = audioClip!;
-        audioSource.Play();
-        AudioFilter filter = gm.AddComponent<AudioFilter>()!;
-        gm.AddComponent<OmitAudioFilter>();
-
-        return new RtcAudioSource(audioSource, filter);
+        return AudioClipRtcAudioSource.New(audioClip!);
     }
 }
 
