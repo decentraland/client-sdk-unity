@@ -13,7 +13,7 @@ OcclusionCullingSettings:
 --- !u!104 &2
 RenderSettings:
   m_ObjectHideFlags: 0
-  serializedVersion: 10
+  serializedVersion: 9
   m_Fog: 0
   m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_FogMode: 3
@@ -42,8 +42,8 @@ RenderSettings:
 --- !u!157 &3
 LightmapSettings:
   m_ObjectHideFlags: 0
-  serializedVersion: 13
-  m_BakeOnSceneLoad: 0
+  serializedVersion: 12
+  m_GIWorkflowMode: 1
   m_GISettings:
     serializedVersion: 2
     m_BounceScale: 1
@@ -66,6 +66,9 @@ LightmapSettings:
     m_LightmapParameters: {fileID: 0}
     m_LightmapsBakeMode: 1
     m_TextureCompression: 1
+    m_FinalGather: 0
+    m_FinalGatherFiltering: 1
+    m_FinalGatherRayCount: 256
     m_ReflectionCompression: 2
     m_MixedBakeMode: 2
     m_BakeBackend: 1
@@ -165,8 +168,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MicrophoneDropdownMenu: {fileID: 1678370709}
   DisconnectButton: {fileID: 1770732189}
+  microphonePlaybackToSpeakers: 0
   audioMixer: {fileID: 24100000, guid: e13dfda5812f845699b8f3e7cbd93dd4, type: 2}
   audioHandleName: MicrophoneVolume
+  botTokens: {fileID: 4900000, guid: e764b6bb07004b709c059485ba1ef214, type: 3}
+  botClip: {fileID: 8300000, guid: 2215cac0cd3f0469d85d9940223b037d, type: 3}
+  bots: []
 --- !u!1 &297302484
 GameObject:
   m_ObjectHideFlags: 0
