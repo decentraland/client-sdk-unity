@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Examples;
+using LiveKit;
 using LiveKit.Audio;
 using LiveKit.Proto;
 using LiveKit.Rooms;
@@ -28,6 +31,13 @@ public class ExampleRoom : MonoBehaviour
     [Space]
     public AudioMixer audioMixer;
     public string audioHandleName;
+
+    [Header("Bot Speakers")]
+    [SerializeField] private TextAsset botTokens;
+    [SerializeField] private AudioClip botClip;
+    [SerializeField] private List<BotParticipant> bots = new();
+    
+    private readonly List<(Room room, GameObject bot)> botInstances= new();
 
     private void Start()
     {
@@ -62,6 +72,9 @@ public class ExampleRoom : MonoBehaviour
 
     private async UniTaskVoid StartAsync()
     {
+        var tokens = botTokens.text!.Split('\n')!;
+        bots = tokens.Select(t => new BotParticipant { token = t, audioClip = botClip }).ToList();
+        
         // New Room must be called when WebGL assembly is loaded
         m_Room = new Room();
 
@@ -138,7 +151,78 @@ public class ExampleRoom : MonoBehaviour
 
     private void OnDestroy()
     {
-        m_Room?.DisconnectAsync(CancellationToken.None);
+        DisconnectBotsAsync().Forget();
+        m_Room?.DisconnectAsync(destroyCancellationToken);
         microphoneSource?.Dispose();
     }
+
+    [ContextMenu(nameof(AddBots))]
+    public void AddBots()
+    {
+        AddBotsInternal().Forget();
+    }
+
+    private async UniTask DisconnectBotsAsync()
+    {
+        await UniTask.WhenAll(
+            botInstances
+                .Select(r => r.room!.DisconnectAsync(destroyCancellationToken).AsUniTask())!
+                .ToArray()
+        );
+        foreach (var botInstance in botInstances)
+        {
+            Destroy(botInstance.bot);
+        }
+
+        botInstances.Clear();
+    }
+
+    private async UniTaskVoid AddBotsInternal()
+    {
+        await DisconnectBotsAsync();
+
+        string url = PlayerPrefs.GetString(nameof(JoinMenu.LivekitURL))!;
+
+        int botId = 1;
+        foreach (var botParticipant in bots)
+        {
+            Room room = new Room();
+            await room.ConnectAsync(url, botParticipant.token, destroyCancellationToken, false);
+
+            GameObject gm = new GameObject($"bot_{botId}");
+            AudioSource audioSource = gm.AddComponent<AudioSource>()!;
+            audioSource.clip = botParticipant.audioClip;
+            AudioFilter filter = gm.AddComponent<AudioFilter>()!;
+            filter.EnableSilenceAfterCapture();
+
+            RtcAudioSource source = new RtcAudioSource(audioSource, filter);
+            
+            source.Start();
+
+            var myTrack = room.AudioTracks.CreateAudioTrack("own", source);
+            var trackOptions = new TrackPublishOptions
+            {
+                AudioEncoding = new AudioEncoding
+                {
+                    MaxBitrate = 124000
+                },
+                Source = TrackSource.SourceMicrophone
+            };
+            var publishTask = room.Participants.LocalParticipant()
+                .PublishTrack(myTrack, trackOptions, CancellationToken.None);
+            await UniTask.WaitUntil(() => publishTask.IsDone);
+            
+            Debug.Log($"Bot publish finished: {botId}");
+            
+            botInstances.Add((room, gm));
+            botId++;
+        }
+    }
+}
+
+[Serializable]
+public struct BotParticipant
+{
+    public string token;
+    public AudioClip audioClip;
 }
