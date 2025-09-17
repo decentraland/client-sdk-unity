@@ -37,8 +37,8 @@ public class ExampleRoom : MonoBehaviour
     [SerializeField] private AudioClip botClip;
     [SerializeField] private List<BotParticipant> bots = new();
     [SerializeField] private BotCaptureMode botCaptureMode = BotCaptureMode.FromMicrophone;
-    
-    private readonly List<(Room room, IRtcAudioSource bot)> botInstances= new();
+
+    private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
 
     private void Start()
     {
@@ -73,9 +73,9 @@ public class ExampleRoom : MonoBehaviour
 
     private async UniTaskVoid StartAsync()
     {
-        var tokens = botTokens.text!.Split('\n')!;
+        var tokens = botTokens ? botTokens.text!.Split('\n')! : Array.Empty<string>();
         bots = tokens.Select(t => new BotParticipant { token = t, audioClip = botClip }).ToList();
-        
+
         // New Room must be called when WebGL assembly is loaded
         m_Room = new Room();
 
@@ -184,8 +184,12 @@ public class ExampleRoom : MonoBehaviour
 
         string url = PlayerPrefs.GetString(nameof(JoinMenu.LivekitURL))!;
 
-        int botId = 1;
-        foreach (var botParticipant in bots)
+        int id = 0;
+        List<UniTask> tasks = bots.Select(b => SetupAsync(b, ++id))!.ToList();
+        await UniTask.WhenAll(tasks);
+        return;
+
+        async UniTask SetupAsync(BotParticipant botParticipant, int botId)
         {
             Room room = new Room();
             await room.ConnectAsync(url, botParticipant.token, destroyCancellationToken, false);
@@ -205,11 +209,10 @@ public class ExampleRoom : MonoBehaviour
             var publishTask = room.Participants.LocalParticipant()
                 .PublishTrack(myTrack, trackOptions, CancellationToken.None);
             await UniTask.WaitUntil(() => publishTask.IsDone);
-            
+
             Debug.Log($"Bot publish finished: {botId}");
-            
+
             botInstances.Add((room, source));
-            botId++;
         }
     }
 
@@ -242,7 +245,7 @@ public class ExampleRoom : MonoBehaviour
             MicrophoneDropdown.Bind(MicrophoneDropdownMenu, botSource);
             return botSource;
         }
-        
+
         return AudioClipRtcAudioSource.New(audioClip!);
     }
 }
