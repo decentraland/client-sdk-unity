@@ -24,12 +24,17 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private bool disposed;
 
+        public readonly AudioStreamInfo audioStreamInfo;
+
         public AudioStream(
             IAudioStreams audioStreams,
-            OwnedAudioStream ownedAudioStream
+            OwnedAudioStream ownedAudioStream,
+            AudioStreamInfo audioStreamInfo
         )
         {
             this.audioStreams = audioStreams;
+            this.audioStreamInfo = audioStreamInfo;
+
             handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
             Queue.Register(this);
@@ -178,6 +183,18 @@ namespace LiveKit.Rooms.Streaming.Audio
                     }
                 ).Start();
             }
+        }
+    }
+
+    public readonly struct AudioStreamInfo
+    {
+        public readonly uint numChannels;
+        public readonly uint sampleRate;
+
+        public AudioStreamInfo(uint numChannels, uint sampleRate)
+        {
+            this.numChannels = numChannels;
+            this.sampleRate = sampleRate;
         }
     }
 }

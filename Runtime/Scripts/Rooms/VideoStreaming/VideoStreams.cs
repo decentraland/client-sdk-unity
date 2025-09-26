@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace LiveKit.Rooms.VideoStreaming
 {
-    public class VideoStreams : Streams<IVideoStream>, IVideoStreams
+    public class VideoStreams : Streams<IVideoStream, VideoStreamInfo>, IVideoStreams
     {
         private readonly VideoBufferType bufferType;
         private readonly TextureFormat textureFormat;
@@ -42,6 +42,11 @@ namespace LiveKit.Rooms.VideoStreaming
 
             var streamInfo = res.NewVideoStream!.Stream;
             return new VideoStream(this, streamInfo!, textureFormat);
+        }
+
+        protected override VideoStreamInfo InfoFromStream(IVideoStream stream)
+        {
+            return new VideoStreamInfo();
         }
     }
 }

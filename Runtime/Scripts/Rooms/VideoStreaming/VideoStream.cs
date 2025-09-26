@@ -9,7 +9,7 @@ namespace LiveKit.Rooms.VideoStreaming
         private readonly IVideoStreams videoStreams;
         private readonly TextureFormat textureFormat;
         private readonly FfiHandle handle;
-        private readonly VideoStreamInfo info;
+        private readonly LiveKit.Proto.VideoStreamInfo info;
 
         private Texture2D? lastDecoded;
         private VideoLastFrame? lastFrame;
@@ -89,5 +89,9 @@ namespace LiveKit.Rooms.VideoStreaming
                 return lastDecoded;
             }
         }
+    }
+
+    public readonly struct VideoStreamInfo
+    {
     }
 }

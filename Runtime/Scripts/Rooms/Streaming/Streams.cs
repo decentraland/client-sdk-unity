@@ -6,39 +6,12 @@ using LiveKit.Rooms.Tracks;
 
 namespace LiveKit.Rooms.Streaming
 {
-    public abstract class Streams<T> : IStreams<T> where T : class, IDisposable
+    public abstract class Streams<T, TInfo> : IStreams<T, TInfo> where T : class, IDisposable
     {
-        [Serializable]
-        private readonly struct Key : IEquatable<Key>
-        {
-            public readonly string identity;
-            public readonly string sid;
-
-            public Key(string identity, string sid)
-            {
-                this.identity = identity;
-                this.sid = sid;
-            }
-
-            public bool Equals(Key other) =>
-                identity == other.identity
-                && sid == other.sid;
-
-            public override bool Equals(object? obj)
-            {
-                return obj is Key other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                return HashCode.Combine(identity, sid);
-            }
-        }
-
         private readonly TrackKind requiredKind;
         private readonly IParticipantsHub participantsHub;
-        private readonly Dictionary<Key, T> streams = new();
-        private readonly Dictionary<T, Key> reverseLookup = new();
+        private readonly Dictionary<StreamKey, T> streams = new();
+        private readonly Dictionary<T, StreamKey> reverseLookup = new();
         private bool isDisposing = false;
 
         public Streams(IParticipantsHub participantsHub, TrackKind requiredKind)
@@ -51,17 +24,17 @@ namespace LiveKit.Rooms.Streaming
         {
             lock (this)
             {
-                var key = new Key(identity, sid);
+                var key = new StreamKey(identity, sid);
                 if (streams.TryGetValue(key, out var stream) == false)
                 {
                     var participant = participantsHub.RemoteParticipant(identity);
-                    
+
                     if (participant == null)
                         if (identity == participantsHub.LocalParticipant().Identity)
                             participant = participantsHub.LocalParticipant();
                         else
-                            return null;        
-                    
+                            return null;
+
                     if (participant.Tracks.TryGetValue(sid, out var trackPublication) == false)
                         return null;
 
@@ -83,7 +56,7 @@ namespace LiveKit.Rooms.Streaming
             lock (this)
             {
                 if (isDisposing) return false;
-                
+
                 if (reverseLookup.TryGetValue(stream, out var key))
                 {
                     streams.Remove(key);
@@ -107,6 +80,22 @@ namespace LiveKit.Rooms.Streaming
             }
         }
 
+        public void ListInfo(List<StreamInfo<TInfo>> output)
+        {
+            lock (this)
+            {
+                output.Clear();
+
+                foreach (var (key, value) in streams)
+                {
+                    output.Add(new StreamInfo<TInfo>(key, InfoFromStream(value)));
+                }
+            }
+        }
+
+        protected abstract TInfo InfoFromStream(T stream);
+
         protected abstract T NewStreamInstance(ITrack track);
     }
+
 }

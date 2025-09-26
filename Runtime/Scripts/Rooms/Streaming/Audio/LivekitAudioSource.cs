@@ -8,7 +8,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         private static ulong counter;
 
         private int sampleRate;
-        private WeakReference<IAudioStream>? stream;
+        private WeakReference<AudioStream>? stream;
         private AudioSource audioSource = null!;
 
         public static LivekitAudioSource New(bool explicitName = false)
@@ -21,7 +21,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             return source;
         }
 
-        public void Construct(WeakReference<IAudioStream> audioStream)
+        public void Construct(WeakReference<AudioStream> audioStream)
         {
             stream = audioStream;
         }
