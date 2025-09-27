@@ -10,11 +10,10 @@ using RichTypes;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
-    public class AudioStream : IAudioStream
+    public class AudioStream : IDisposable
     {
         private static readonly ResampleQueue Queue = new();
 
-        private readonly IAudioStreams audioStreams;
         private readonly FfiHandle handle;
 
         private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
@@ -27,12 +26,10 @@ namespace LiveKit.Rooms.Streaming.Audio
         public readonly AudioStreamInfo audioStreamInfo;
 
         public AudioStream(
-            IAudioStreams audioStreams,
             OwnedAudioStream ownedAudioStream,
             AudioStreamInfo audioStreamInfo
         )
         {
-            this.audioStreams = audioStreams;
             this.audioStreamInfo = audioStreamInfo;
 
             handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
@@ -40,6 +37,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             Queue.Register(this);
         }
 
+        /// <summary>
+        /// Supposed to be disposed ONLY by AudioStreams
+        /// </summary>
         public void Dispose()
         {
             if (disposed)
@@ -51,10 +51,13 @@ namespace LiveKit.Rooms.Streaming.Audio
             using (var guard = buffer.Lock()) guard.Value.Dispose();
 
             FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
-            audioStreams.Release(this);
             Queue.UnRegister(this);
         }
 
+        /// <summary>
+        /// Supposed to be called from Unity's audio thread.
+        /// </summary>
+        /// <returns>buffer filled - true or false.</returns>
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
             targetChannels = channels;

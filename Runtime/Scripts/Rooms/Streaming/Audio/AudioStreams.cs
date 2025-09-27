@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using LiveKit.Internal.FFIClients.Requests;
+﻿using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Tracks;
@@ -13,7 +12,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
         }
 
-        protected override AudioStream NewStreamInstance(ITrack track)
+        protected override AudioStream NewStreamInstance(StreamKey streamKey, ITrack track)
         {
             using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
             var newStream = request.request;
@@ -39,7 +38,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             FfiResponse res = response;
 
             var streamInfo = res.NewAudioStream!.Stream;
-            return new AudioStream(this, streamInfo!, audioStreamInfo);
+            return new AudioStream(streamInfo!, audioStreamInfo);
         }
 
         protected override AudioStreamInfo InfoFromStream(AudioStream stream)
