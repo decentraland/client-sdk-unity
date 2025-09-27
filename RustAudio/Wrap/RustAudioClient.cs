@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using AOT;
 using RichTypes;
@@ -87,9 +88,12 @@ namespace RustAudio
         [MonoPInvokeCallback(typeof(NativeMethods.ErrorCallback))]
         private static void ErrorCallback(IntPtr msg)
         {
-            Option<string> error = NativeMethods.PtrToStringAndFree(msg);
-            if (error.Has)
-                Debug.LogError(error.Value);
+            // Message owned by native side
+            if (msg != IntPtr.Zero)
+            {
+                string result = Marshal.PtrToStringAnsi(msg)!;
+                Debug.LogError(result);
+            }
         }
 
 

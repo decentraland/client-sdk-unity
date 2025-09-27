@@ -260,6 +260,8 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
     let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let moved_id = next_id;
 
+    // both 2 audio callbacks must be lightweight and NOT call to other callbacks
+    // callbacks used from audio thread and if call is heavy OS may kill the app
     let stream = device
         .build_input_stream(
             &config,
@@ -269,14 +271,7 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
                     let _ = channel.0.try_send(data);
                 }
             },
-            |e| {
-                let content = e.to_string();
-                let c_content = CString::new(content).unwrap_or_default();
-
-                if let Some(cb) = **ERROR_CALLBACK.load() {
-                    cb(c_content.as_ptr());
-                }
-            },
+            |e| eprintln!("error on stream: {e}"),
             None,
         )
         .context("cannot build input stream")?;
