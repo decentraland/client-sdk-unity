@@ -109,6 +109,7 @@ namespace LiveKit.Rooms.Streaming
                 {
                     stream!.Dispose(out T? inner);
                     inner!.Dispose();
+                    streams.Remove(key);
                     return true;
                 }
 
