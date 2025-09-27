@@ -89,7 +89,7 @@ namespace RustAudio
         {
             Option<string> error = NativeMethods.PtrToStringAndFree(msg);
             if (error.Has)
-                Debug.LogError(error);
+                Debug.LogError(error.Value);
         }
 
 
