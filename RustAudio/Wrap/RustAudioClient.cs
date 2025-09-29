@@ -102,6 +102,10 @@ namespace RustAudio
             return NativeMethods.GetDeviceNames();
         }
 
+        public static Result<string[]> DeviceQualityOptions(string deviceName)
+        {
+            return NativeMethods.DeviceQualityOptions(deviceName);
+        }
 
         public static Result<RustAudioSource> NewStream(string deviceName)
         {
