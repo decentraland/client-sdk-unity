@@ -146,9 +146,20 @@ namespace LiveKit.RtcSources.Video
             {
                 if (bufferTexture == null)
                 {
-                    bufferTexture = new RenderTexture(texture.width, texture.height, 0, RenderTextureFormat.ARGB32);
+                    RenderTextureFormat format = VideoUtils.RenderTextureFormatFrom(textureFormat);
+                    bufferTexture = new RenderTexture(texture.width, texture.height, 0, format);
                     bufferTexture.enableRandomWrite = true;
                     bufferTexture.Create();
+
+                    var bytesPerPixel = VideoUtils.BytesPerPixel(format);
+                    var requiredSize = texture.width * texture.height * bytesPerPixel;
+                    if (capturedFrameData.IsCreated == false || capturedFrameData.Length != requiredSize)
+                    {
+                        if (capturedFrameData.IsCreated)
+                            capturedFrameData.Dispose();
+
+                        capturedFrameData = new NativeArray<byte>(requiredSize, Allocator.Persistent);
+                    }
                 }
 
                 Graphics.Blit(texture, bufferTexture);
@@ -193,7 +204,11 @@ namespace LiveKit.RtcSources.Video
 
         public void Dispose()
         {
-            capturedFrameData.Dispose();
+            if (capturedFrameData.IsCreated)
+            {
+                capturedFrameData.Dispose();
+            }
+
             if (bufferTexture)
             {
                 bufferTexture!.Release();
