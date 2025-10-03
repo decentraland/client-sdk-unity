@@ -1,4 +1,5 @@
-﻿using LiveKit.Rooms.VideoStreaming;
+﻿using LiveKit.Internal;
+using LiveKit.Rooms.VideoStreaming;
 using RichTypes;
 using UnityEngine;
 using UnityEngine.UI;
@@ -19,6 +20,7 @@ namespace LiveKit.Rooms.Streaming.Video
             var gm = new GameObject();
             gm.transform.SetParent(parent);
             var source = gm.AddComponent<LivekitVideoSource>()!;
+            gm.AddComponent<RectTransform>();
             source.image = gm.AddComponent<RawImage>()!;
             if (explicitName) source.name = $"{nameof(LivekitVideoSource)}_{counter++}";
 
@@ -29,6 +31,11 @@ namespace LiveKit.Rooms.Streaming.Video
         public void Construct(Weak<IVideoStream> audioStream)
         {
             stream = audioStream;
+            if (image == null)
+            {
+                image = GetComponent<RawImage>();
+                if (image == null) Utils.Error("Cannot assign raw image");
+            }
         }
 
         public void Free()
