@@ -13,6 +13,9 @@ using LiveKit.Rooms;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Streaming;
 using LiveKit.Rooms.Streaming.Audio;
+using LiveKit.Rooms.Streaming.Video;
+using LiveKit.Rooms.VideoStreaming;
+using LiveKit.RtcSources.Video;
 using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using UnityEngine.Audio;
@@ -23,7 +26,8 @@ public class ExampleRoom : MonoBehaviour
     private Room? m_Room;
     private MicrophoneRtcAudioSource? microphoneSource;
 
-    private readonly Dictionary<AudioStream, LivekitAudioSource> sourcesMap = new();
+    private readonly Dictionary<AudioStream, LivekitAudioSource> audioSourcesMap = new();
+    private readonly Dictionary<IVideoStream, LivekitVideoSource> videoSourcesMap = new();
     private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
 
     public Dropdown MicrophoneDropdownMenu;
@@ -32,6 +36,7 @@ public class ExampleRoom : MonoBehaviour
     [Space] public AudioMixer audioMixer;
     public string audioHandleName;
     [SerializeField] private Toggle enableAudioSources;
+    [SerializeField] private RectTransform videoParent;
 
     [Header("Bot Speakers")] [SerializeField]
     private TextAsset botTokens;
@@ -53,18 +58,46 @@ public class ExampleRoom : MonoBehaviour
             var participant = m_Room.Participants.RemoteParticipant(remoteParticipantIdentity)!;
             foreach (var (key, value) in participant.Tracks)
             {
-                var track = m_Room.AudioStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
-                if (track.Resource.Has)
+                switch (value.Kind)
                 {
-                    var audioStream = track.Resource.Value;
-                    if (sourcesMap.ContainsKey(audioStream) == false)
+                    case TrackKind.KindUnknown:
+                        break;
+                    case TrackKind.KindAudio:
                     {
-                        var livekitAudioSource = LivekitAudioSource.New(true);
-                        livekitAudioSource.Construct(track);
-                        livekitAudioSource.Play();
-                        Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
-                        sourcesMap[audioStream] = livekitAudioSource;
+                        Weak<AudioStream> track = m_Room.AudioStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        if (track.Resource.Has)
+                        {
+                            var audioStream = track.Resource.Value;
+                            if (audioSourcesMap.ContainsKey(audioStream) == false)
+                            {
+                                var livekitAudioSource = LivekitAudioSource.New(true);
+                                livekitAudioSource.Construct(track);
+                                livekitAudioSource.Play();
+                                Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
+                                audioSourcesMap[audioStream] = livekitAudioSource;
+                            }
+                        }
                     }
+                        break;
+                    case TrackKind.KindVideo:
+                    {
+                        Weak<IVideoStream> track = m_Room.VideoStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        if (track.Resource.Has)
+                        {
+                            var videoStream = track.Resource.Value;
+                            if (videoSourcesMap.ContainsKey(videoStream) == false)
+                            {
+                                var livekitVideoSource = LivekitVideoSource.New(videoParent,true);
+                                livekitVideoSource.Construct(track);
+                                livekitVideoSource.Play();
+                                Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
+                                videoSourcesMap[videoStream] = livekitVideoSource;
+                            }
+                        }
+                    }
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
             }
         }
@@ -74,7 +107,7 @@ public class ExampleRoom : MonoBehaviour
     {
         enableAudioSources.onValueChanged.AddListener(v =>
         {
-            foreach (KeyValuePair<AudioStream, LivekitAudioSource> pair in sourcesMap)
+            foreach (KeyValuePair<AudioStream, LivekitAudioSource> pair in audioSourcesMap)
             {
                 if (v) pair.Value.Play();
                 else pair.Value.Stop();
@@ -143,7 +176,7 @@ public class ExampleRoom : MonoBehaviour
 
         MicrophoneDropdown.Bind(MicrophoneDropdownMenu, microphoneSource);
 
-        var myTrack = m_Room.AudioTracks.CreateAudioTrack("own", microphoneSource);
+        var audioTrack = m_Room.LocalTracks.CreateAudioTrack("own", microphoneSource);
         var trackOptions = new TrackPublishOptions
         {
             AudioEncoding = new AudioEncoding
@@ -153,8 +186,34 @@ public class ExampleRoom : MonoBehaviour
             Source = TrackSource.SourceMicrophone
         };
         var publishTask = m_Room.Participants.LocalParticipant()
-            .PublishTrack(myTrack, trackOptions, CancellationToken.None);
+            .PublishTrack(audioTrack, trackOptions, CancellationToken.None);
         await UniTask.WaitUntil(() => publishTask.IsDone);
+
+        // Camera usage
+
+        Result<WebCameraVideoInput> inputResult = WebCameraVideoInput.NewDefault();
+        if (inputResult.Success == false)
+        {
+            Debug.LogError($"Cannot create video source: {inputResult.ErrorMessage}");
+            return;
+        }
+
+        RtcVideoSource videoSource = new(inputResult.Value);
+        videoSource.Start();
+
+        var videoTrack = m_Room.LocalTracks.CreateVideoTrack("own", videoSource);
+        var videoTrackOptions = new TrackPublishOptions
+        {
+            VideoEncoding = new VideoEncoding
+            {
+                MaxFramerate = 60
+            },
+            Source = TrackSource.SourceCamera
+        };
+        var publishVideoTask = m_Room.Participants.LocalParticipant()
+            .PublishTrack(videoTrack, videoTrackOptions, CancellationToken.None);
+        await UniTask.WaitUntil(() => publishVideoTask.IsDone);
+
         Debug.Log("Init finished");
     }
 
@@ -205,7 +264,7 @@ public class ExampleRoom : MonoBehaviour
             IRtcAudioSource source = NewBotAudioSource(botCaptureMode, botId, botParticipant.audioClip);
             source.Start();
 
-            var myTrack = room.AudioTracks.CreateAudioTrack("own", source);
+            var myTrack = room.LocalTracks.CreateAudioTrack("own", source);
             var trackOptions = new TrackPublishOptions
             {
                 AudioEncoding = new AudioEncoding
