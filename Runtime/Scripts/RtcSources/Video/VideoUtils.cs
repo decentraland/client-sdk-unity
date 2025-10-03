@@ -45,22 +45,7 @@ namespace LiveKit.RtcSources.Video
                 TextureFormat.RGB48 => RenderTextureFormat.ARGB64,
                 TextureFormat.RGBA64 => RenderTextureFormat.ARGB64,
                 // Compressed / special formats: no direct RT support
-                TextureFormat.RGB9e5Float or TextureFormat.RGB24 or TextureFormat.DXT1 or TextureFormat.DXT5
-                    or TextureFormat.DXT1Crunched or TextureFormat.DXT5Crunched or TextureFormat.PVRTC_RGB2
-                    or TextureFormat.PVRTC_RGBA2 or TextureFormat.PVRTC_RGB4 or TextureFormat.PVRTC_RGBA4
-                    or TextureFormat.ETC_RGB4 or TextureFormat.ETC2_RGB or TextureFormat.ETC2_RGBA1
-                    or TextureFormat.ETC2_RGBA8 or TextureFormat.ETC_RGB4_3DS or TextureFormat.ETC_RGBA8_3DS
-                    or TextureFormat.ETC_RGB4Crunched or TextureFormat.ETC2_RGBA8Crunched or TextureFormat.EAC_R
-                    or TextureFormat.EAC_R_SIGNED or TextureFormat.EAC_RG or TextureFormat.EAC_RG_SIGNED
-                    or TextureFormat.ASTC_4x4 or TextureFormat.ASTC_5x5 or TextureFormat.ASTC_6x6 or TextureFormat.ASTC_8x8
-                    or TextureFormat.ASTC_10x10 or TextureFormat.ASTC_12x12 or TextureFormat.ASTC_HDR_4x4
-                    or TextureFormat.ASTC_HDR_5x5 or TextureFormat.ASTC_HDR_6x6 or TextureFormat.ASTC_HDR_8x8
-                    or TextureFormat.ASTC_HDR_10x10 or TextureFormat.ASTC_HDR_12x12 or TextureFormat.ASTC_RGBA_4x4
-                    or TextureFormat.ASTC_RGBA_5x5 or TextureFormat.ASTC_RGBA_6x6 or TextureFormat.ASTC_RGBA_8x8
-                    or TextureFormat.ASTC_RGBA_10x10 or TextureFormat.ASTC_RGBA_12x12 or TextureFormat.BC4
-                    or TextureFormat.BC5 or TextureFormat.BC6H or TextureFormat.BC7
-                    or TextureFormat.YUY2 => throw new NotSupportedException($"Format not supported: {format.ToString()}"),
-                _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+                _ => throw new NotSupportedException($"Format not supported: {format.ToString()}"),
             };
         
         public static int BytesPerPixel(RenderTextureFormat format) =>
