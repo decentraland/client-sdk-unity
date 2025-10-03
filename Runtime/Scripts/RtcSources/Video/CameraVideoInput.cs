@@ -33,7 +33,7 @@ namespace LiveKit.RtcSources.Video
             if (devices.Length == 0)
                 return Result<WebCameraVideoInput>.ErrorResult($"No device available at the time");
             string device = devices[0].name!;
-            return NewFromDevice(device, VideoBufferType.Rgb24);
+            return NewFromDevice(device, VideoBufferType.Rgba);
         }
 
         public static Result<WebCameraVideoInput> NewFromDevice(string device, VideoBufferType bufferType)
