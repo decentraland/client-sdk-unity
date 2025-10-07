@@ -18,8 +18,6 @@ namespace LiveKit.Audio
 {
     public class MicrophoneRtcAudioSource : IRtcAudioSource, IDisposable
     {
-        private const int DEFAULT_NUM_CHANNELS = 2;
-
         private readonly AudioResampler audioResampler = AudioResampler.New();
         private readonly Mutex<NativeAudioBufferResampleTee> buffer =
             new(
@@ -70,7 +68,7 @@ namespace LiveKit.Audio
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
-            newAudioSource.NumChannels = DEFAULT_NUM_CHANNELS;
+            newAudioSource.NumChannels = deviceMicrophoneAudioSource.MicrophoneInfo.channels;
             newAudioSource.SampleRate = SampleRate.Hz48000.valueHz;
 
             using var options = request.TempResource<AudioSourceOptions>();
@@ -242,7 +240,7 @@ namespace LiveKit.Audio
                 if (frameResult.Has == false) break;
                 using AudioFrame rawFrame = frameResult.Value;
                 using OwnedAudioFrame frame =
-                    audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
+                    audioResampler.LiveKitCompatibleRemixAndResample(rawFrame);
                 guard.Value.TryWavTeeAfterFrame(frame);
 
                 Span<PCMSample> audioBytes = frame.AsPCMSampleSpan();
