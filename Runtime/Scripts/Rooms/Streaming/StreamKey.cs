@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming
 {
@@ -26,6 +28,25 @@ namespace LiveKit.Rooms.Streaming
         public override int GetHashCode()
         {
             return HashCode.Combine(identity, sid);
+        }
+    }
+
+    public static class StreamKeyUtils
+    {
+        public static string PersistentFilePathByName(string name)
+        {
+            string rootDir = Application.persistentDataPath!;
+            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            string filePath = Path.Combine(rootDir, "livekit_audio_wav", fileName);
+            return filePath;
+        }
+
+        public static string PersistentFilePathByStreamKey(StreamKey key, string postfix)
+        {
+            string rootDir = Application.persistentDataPath!;
+            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}";
+            string filePath = Path.Combine(rootDir, "livekit_audio_wav", fileName);
+            return filePath;
         }
     }
 }

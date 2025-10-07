@@ -32,7 +32,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
 
             newStream.NumChannels = 2;
-            AudioStreamInfo audioStreamInfo = new AudioStreamInfo(newStream.NumChannels, newStream.SampleRate);
+            AudioStreamInfo audioStreamInfo = new AudioStreamInfo(streamKey, newStream.NumChannels, newStream.SampleRate);
 
             using var response = request.Send();
             FfiResponse res = response;

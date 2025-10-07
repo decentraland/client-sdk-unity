@@ -16,7 +16,17 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private readonly FfiHandle handle;
 
-        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
+        /// <summary>
+        /// Keep under single lock for the use case, avoid unneeded multple mutex locking
+        /// </summary>
+        private readonly Mutex<NativeAudioBufferResampleTee> buffer =
+            new(
+                new NativeAudioBufferResampleTee(
+                    new NativeAudioBuffer(200),
+                    default,
+                    default
+                )
+            );
 
         private int targetChannels;
         private int targetSampleRate;
@@ -24,6 +34,18 @@ namespace LiveKit.Rooms.Streaming.Audio
         private bool disposed;
 
         public readonly AudioStreamInfo audioStreamInfo;
+
+        public WavTeeControl WavTeeControl
+        {
+            get
+            {
+                string networkFilePath = 
+                    StreamKeyUtils.PersistentFilePathByStreamKey(audioStreamInfo.streamKey, "network");
+                string resampleFilePath =
+                    StreamKeyUtils.PersistentFilePathByStreamKey(audioStreamInfo.streamKey, "resample");
+                return new WavTeeControl(buffer, beforeWavFilePath: networkFilePath, afterWavFilePath: resampleFilePath);
+            }
+        }
 
         public AudioStream(
             OwnedAudioStream ownedAudioStream,
@@ -48,7 +70,10 @@ namespace LiveKit.Rooms.Streaming.Audio
             disposed = true;
 
             handle.Dispose();
-            using (var guard = buffer.Lock()) guard.Value.Dispose();
+            using (var guard = buffer.Lock())
+            {
+                guard.Value.Dispose();
+            }
 
             FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
             Queue.UnRegister(this);
@@ -165,7 +190,8 @@ namespace LiveKit.Rooms.Streaming.Audio
                 using var frame = audioResampler.RemixAndResample(rawFrame, (uint)stream.targetChannels,
                     (uint)stream.targetSampleRate);
                 using var guard = stream.buffer.Lock();
-                guard.Value.Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
+                guard.Value.Write(frame);
+                guard.Value.TryWriteWavTee(rawFrame, frame);
             }
 
             private void StartThread()
@@ -191,11 +217,13 @@ namespace LiveKit.Rooms.Streaming.Audio
 
     public readonly struct AudioStreamInfo
     {
+        public readonly StreamKey streamKey;
         public readonly uint numChannels;
         public readonly uint sampleRate;
 
-        public AudioStreamInfo(uint numChannels, uint sampleRate)
+        public AudioStreamInfo(StreamKey streamKey, uint numChannels, uint sampleRate)
         {
+            this.streamKey = streamKey;
             this.numChannels = numChannels;
             this.sampleRate = sampleRate;
         }
