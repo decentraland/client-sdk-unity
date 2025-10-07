@@ -4,7 +4,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 using LiveKit.Internal;
 using RichTypes;
-using UnityEngine;
 
 namespace LiveKit.Audio
 {
@@ -21,6 +20,7 @@ namespace LiveKit.Audio
 
         private const short PCM_FORMAT_TAG = 1;
         private const short BITS_PER_SAMPLE = 16;
+        private const int BYTES_PER_SAMPLE = BITS_PER_SAMPLE / 8; // 2
         private const int HEADER_SIZE = 44;
         private const int FMT_CHUNK_SIZE = 16;
 
@@ -28,7 +28,7 @@ namespace LiveKit.Audio
         private long dataSize;
         private uint sampleRate;
         private ushort channels;
-        private bool notDisposed; // not for empty creation via default ctor
+        private bool notDisposed; // 'not' for empty creation via default ctor
 
         private WavWriter(Stream outputStream)
         {
@@ -82,7 +82,7 @@ namespace LiveKit.Audio
                 return Result.ErrorResult("Frame is already disposed");
             }
 
-            return Write(frame.AsPCMSampleSpan(), channels, sampleRate);
+            return Write(frame.AsPCMSampleSpan(), frame.NumChannels, frame.SampleRate);
         }
 
         public Result Write(ReadOnlySpan<PCMSample> samples, uint channels, uint sampleRate)
@@ -92,17 +92,16 @@ namespace LiveKit.Audio
                 return Result.ErrorResult("WavWriter is already disposed");
             }
 
-            if (this.sampleRate != 0 && (this.sampleRate != sampleRate || this.channels != channels))
-            {
-                return Result.ErrorResult("All frames must have same format (channels, sample rate)");
-            }
-
-            // lazy write header on first frame
+            // First write: reserve header & lock format
             if (IsStreamEmpty())
             {
                 this.sampleRate = sampleRate;
                 this.channels = (ushort)channels;
                 outputStream.Write(stackalloc byte[HEADER_SIZE]);
+            }
+            else if (this.sampleRate != sampleRate || this.channels != channels)
+            {
+                return Result.ErrorResult("All frames must have same format (channels, sample rate)");
             }
 
             ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(samples);
@@ -123,19 +122,19 @@ namespace LiveKit.Audio
 
         private void FinalizeHeader()
         {
-            if (IsStreamEmpty()) return;
+            if (dataSize == 0) return;
 
-            int byteRate = (int)(sampleRate * channels * sizeof(short));
-            int fileSize = (int)(36 + dataSize);
+            int byteRate = (int)(sampleRate * channels * BYTES_PER_SAMPLE);
+            int blockAlign = channels * BYTES_PER_SAMPLE;
+            int riffSize = (int)(36 + dataSize);
 
             try
             {
                 outputStream.Seek(0, SeekOrigin.Begin);
-
                 using var bw = new BinaryWriter(outputStream, System.Text.Encoding.ASCII, leaveOpen: true);
 
                 bw.Write(RIFF);
-                bw.Write(fileSize);
+                bw.Write(riffSize);
                 bw.Write(WAVE);
                 bw.Write(FMT);
                 bw.Write(FMT_CHUNK_SIZE);
@@ -143,7 +142,7 @@ namespace LiveKit.Audio
                 bw.Write(channels);
                 bw.Write(sampleRate);
                 bw.Write(byteRate);
-                bw.Write((short)(channels * sizeof(short))); // block align
+                bw.Write((short)blockAlign);
                 bw.Write(BITS_PER_SAMPLE);
                 bw.Write(DATA);
                 bw.Write((int)dataSize);
