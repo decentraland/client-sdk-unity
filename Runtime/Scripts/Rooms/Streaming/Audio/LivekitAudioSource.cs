@@ -67,6 +67,17 @@ namespace LiveKit.Rooms.Streaming.Audio
             audioSource.volume = target;
         }
 
+        public Result ToggleRecordWavOutput()
+        {
+            if (wavWriter.HasValue)
+            {
+                DisposeWavWriter();
+                return Result.SuccessResult();
+            }
+
+            return StartRecordWavOutput();
+        }
+
         public Result StartRecordWavOutput()
         {
             if (wavWriter != null)

@@ -214,6 +214,15 @@ namespace LiveKit.Audio
         private readonly string beforeWavFilePath;
         private readonly string afterWavFilePath;
 
+        public bool IsWavActive
+        {
+            get
+            {
+                using Mutex<NativeAudioBufferResampleTee>.Guard guard = mutex.Lock();
+                return guard.Value.IsWavActive;
+            }
+        }
+
         public WavTeeControl(Mutex<NativeAudioBufferResampleTee> mutex, string beforeWavFilePath, string afterWavFilePath)
         {
             this.mutex = mutex;
