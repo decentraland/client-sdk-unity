@@ -1,4 +1,6 @@
 ﻿using System;
+using LiveKit.Audio;
+using LiveKit.Internal;
 using RichTypes;
 using UnityEngine;
 
@@ -11,6 +13,9 @@ namespace LiveKit.Rooms.Streaming.Audio
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
+
+        private WavWriter? wavWriter;
+        private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
         public static LivekitAudioSource New(bool explicitName = false)
         {
@@ -30,6 +35,21 @@ namespace LiveKit.Rooms.Streaming.Audio
         public void Free()
         {
             stream = Weak<AudioStream>.Null;
+            DisposeWavWriter();
+        }
+
+        private void DisposeWavWriter()
+        {
+            if (wavWriter.HasValue && wavWriter.Value.IsDisposed() == false)
+            {
+                wavWriter.Value.Dispose();
+                wavWriter = null;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            DisposeWavWriter();
         }
 
         public void Play()
@@ -47,6 +67,24 @@ namespace LiveKit.Rooms.Streaming.Audio
             audioSource.volume = target;
         }
 
+        public Result StartRecordWavOutput()
+        {
+            if (wavWriter != null)
+            {
+                return Result.ErrorResult("Already recording");
+            }
+
+            string path = StreamKeyUtils.PersistentFilePathByName($"livekit_audio_source_hz{sampleRate}");
+            Result<WavWriter> writerResult = WavWriter.NewFromPath(path);
+            if (writerResult.Success == false)
+            {
+                return writerResult;
+            }
+
+            wavWriter = writerResult.Value;
+            return Result.SuccessResult();
+        }
+
         private void OnEnable()
         {
             OnAudioConfigurationChanged(false);
@@ -61,13 +99,42 @@ namespace LiveKit.Rooms.Streaming.Audio
         private void OnAudioConfigurationChanged(bool deviceWasChanged)
         {
             sampleRate = AudioSettings.outputSampleRate;
+
+            // Enable recording with different sample_rate
+            if (wavWriter.HasValue)
+            {
+                DisposeWavWriter();
+                Result result = StartRecordWavOutput();
+                if (result.Success == false)
+                {
+                    Utils.Error($"Cannot restart wav recording for output: {result.ErrorMessage}");
+                }
+            }
         }
 
         // Called by Unity on the Audio thread
         private void OnAudioFilterRead(float[] data, int channels)
         {
             Option<AudioStream> resource = stream.Resource;
-            if (resource.Has) resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+            if (resource.Has)
+            {
+                resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+                if (wavWriter.HasValue)
+                {
+                    if (data.Length != wavBuffer.Length)
+                    {
+                        wavBuffer = new PCMSample[data.Length];
+                    }
+
+                    // TODO SIMD
+                    for (var i = 0; i < data.Length; i++)
+                    {
+                        wavBuffer[i] = PCMSample.FromUnitySample(data[i]);
+                    }
+
+                    wavWriter.Value.Write(wavBuffer, (uint)channels, (uint)sampleRate);
+                }
+            }
         }
     }
 }
