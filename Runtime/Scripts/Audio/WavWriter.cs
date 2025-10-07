@@ -92,7 +92,7 @@ namespace LiveKit.Audio
                 return Result.ErrorResult("WavWriter is already disposed");
             }
 
-            if (this.sampleRate != sampleRate || this.channels != channels)
+            if (this.sampleRate != 0 && (this.sampleRate != sampleRate || this.channels != channels))
             {
                 return Result.ErrorResult("All frames must have same format (channels, sample rate)");
             }
