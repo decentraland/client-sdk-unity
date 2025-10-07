@@ -95,6 +95,9 @@ namespace LiveKit.Audio
         private WavWriter beforeResampleWriter;
         private WavWriter afterResampleWriter;
 
+        public readonly bool IsWavActive => beforeResampleWriter.IsDisposed() == false
+                                            && afterResampleWriter.IsDisposed() == false;
+
         public NativeAudioBufferResampleTee(
             NativeAudioBuffer buffer,
             WavWriter beforeResampleWriter,
@@ -143,8 +146,8 @@ namespace LiveKit.Audio
                 beforeResampleWriter.Write(samples, channels, sampleRate);
             }
         }
-        
-        public void TryWavTeeAfterFrame<TFrame>(TFrame frame) where TFrame: IAudioFrame
+
+        public void TryWavTeeAfterFrame<TFrame>(TFrame frame) where TFrame : IAudioFrame
         {
             if (afterResampleWriter.IsDisposed() == false)
             {
@@ -216,6 +219,14 @@ namespace LiveKit.Audio
             this.mutex = mutex;
             this.beforeWavFilePath = beforeWavFilePath;
             this.afterWavFilePath = afterWavFilePath;
+        }
+
+        public Result Toggle()
+        {
+            using Mutex<NativeAudioBufferResampleTee>.Guard guard = mutex.Lock();
+            return guard.Value.IsWavActive
+                ? guard.Value.StopWavTeeToDisk()
+                : guard.Value.StartWavTeeToDisk(beforeWavFilePath, afterWavFilePath);
         }
 
         public Result StartWavTeeToDisk()
