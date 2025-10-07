@@ -36,7 +36,7 @@ namespace LiveKit.Rooms.Streaming
         public static string PersistentFilePathByName(string name)
         {
             string rootDir = Application.persistentDataPath!;
-            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.wav";
             string filePath = Path.Combine(rootDir, "livekit_audio_wav", fileName);
             return filePath;
         }
@@ -44,7 +44,7 @@ namespace LiveKit.Rooms.Streaming
         public static string PersistentFilePathByStreamKey(StreamKey key, string postfix)
         {
             string rootDir = Application.persistentDataPath!;
-            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}";
+            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}.wav";
             string filePath = Path.Combine(rootDir, "livekit_audio_wav", fileName);
             return filePath;
         }
