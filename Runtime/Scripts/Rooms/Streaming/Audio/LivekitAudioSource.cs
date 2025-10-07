@@ -143,7 +143,9 @@ namespace LiveKit.Rooms.Streaming.Audio
                         wavBuffer[i] = PCMSample.FromUnitySample(data[i]);
                     }
 
-                    wavWriter.Value.Write(wavBuffer, (uint)channels, (uint)sampleRate);
+                    WavWriter writer = wavWriter.Value;
+                    writer.Write(wavBuffer, (uint)channels, (uint)sampleRate);
+                    wavWriter = writer;
                 }
             }
         }
