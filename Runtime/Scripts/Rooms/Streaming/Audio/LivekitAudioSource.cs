@@ -87,7 +87,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 return Result.ErrorResult("Already recording");
             }
 
-            string path = StreamKeyUtils.PersistentFilePathByName($"livekit_audio_source_hz{sampleRate}");
+            string path = StreamKeyUtils.NewPersistentFilePathByName($"livekit_audio_source_hz{sampleRate}");
             Result<WavWriter> writerResult = WavWriter.NewFromPath(path);
             if (writerResult.Success == false)
             {

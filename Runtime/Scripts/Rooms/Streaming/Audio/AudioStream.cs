@@ -40,9 +40,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             get
             {
                 string networkFilePath = 
-                    StreamKeyUtils.PersistentFilePathByStreamKey(audioStreamInfo.streamKey, "network");
+                    StreamKeyUtils.NewPersistentFilePathByStreamKey(audioStreamInfo.streamKey, "network");
                 string resampleFilePath =
-                    StreamKeyUtils.PersistentFilePathByStreamKey(audioStreamInfo.streamKey, "resample");
+                    StreamKeyUtils.NewPersistentFilePathByStreamKey(audioStreamInfo.streamKey, "resample");
                 return new WavTeeControl(buffer, beforeWavFilePath: networkFilePath, afterWavFilePath: resampleFilePath);
             }
         }

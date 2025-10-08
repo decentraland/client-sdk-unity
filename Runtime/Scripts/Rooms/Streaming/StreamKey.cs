@@ -41,14 +41,14 @@ namespace LiveKit.Rooms.Streaming
         public static string NewPersistentFilePathByName(string name)
         {
             long index = Interlocked.Increment(ref fileIndexAtomic);
-            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_n{index}.wav";
+            string fileName = $"name__{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_n{index}.wav";
             return Path.Combine(RecordsDirectory, fileName);
         }
 
         public static string NewPersistentFilePathByStreamKey(StreamKey key, string postfix)
         {
             long index = Interlocked.Increment(ref fileIndexAtomic);
-            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}_n{index}.wav";
+            string fileName = $"stream__{key.identity}_{key.sid}_{postfix}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_n{index}.wav";
             return Path.Combine(RecordsDirectory, fileName);
         }
     }

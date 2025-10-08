@@ -48,8 +48,8 @@ namespace LiveKit.Audio
         {
             get
             {
-                string raw = StreamKeyUtils.PersistentFilePathByName("raw_microphone");
-                string resampled = StreamKeyUtils.PersistentFilePathByName("resampled_microphone");
+                string raw = StreamKeyUtils.NewPersistentFilePathByName("raw_microphone");
+                string resampled = StreamKeyUtils.NewPersistentFilePathByName("resampled_microphone");
                 return new(buffer, beforeWavFilePath: raw, afterWavFilePath: resampled);
             }
         }
