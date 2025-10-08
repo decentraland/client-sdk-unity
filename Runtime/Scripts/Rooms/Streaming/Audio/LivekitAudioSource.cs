@@ -17,6 +17,8 @@ namespace LiveKit.Rooms.Streaming.Audio
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
+        public bool IsWavActive => wavWriter.HasValue;
+
         public static LivekitAudioSource New(bool explicitName = false)
         {
             var gm = new GameObject();
