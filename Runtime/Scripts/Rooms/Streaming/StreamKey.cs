@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming
@@ -33,17 +34,21 @@ namespace LiveKit.Rooms.Streaming
 
     public static class StreamKeyUtils
     {
+        private static long fileIndexAtomic;
+        
         public static readonly string RecordsDirectory = Path.Combine(Application.persistentDataPath!, "livekit_audio_wav");
         
-        public static string PersistentFilePathByName(string name)
+        public static string NewPersistentFilePathByName(string name)
         {
-            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.wav";
+            long index = Interlocked.Increment(ref fileIndexAtomic);
+            string fileName = $"{name}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_n{index}.wav";
             return Path.Combine(RecordsDirectory, fileName);
         }
 
-        public static string PersistentFilePathByStreamKey(StreamKey key, string postfix)
+        public static string NewPersistentFilePathByStreamKey(StreamKey key, string postfix)
         {
-            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}.wav";
+            long index = Interlocked.Increment(ref fileIndexAtomic);
+            string fileName = $"{key.identity}_{key.sid}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{postfix}_n{index}.wav";
             return Path.Combine(RecordsDirectory, fileName);
         }
     }
