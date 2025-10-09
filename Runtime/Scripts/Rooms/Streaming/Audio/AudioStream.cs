@@ -17,7 +17,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         private readonly FfiHandle handle;
 
         /// <summary>
-        /// Keep under single lock for the use case, avoid unneeded multple mutex locking
+        /// Keep under single lock for the use case, avoid unneeded multiple mutex locking
         /// </summary>
         private readonly Mutex<NativeAudioBufferResampleTee> buffer =
             new(

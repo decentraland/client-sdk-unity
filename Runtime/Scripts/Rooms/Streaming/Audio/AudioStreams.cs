@@ -1,8 +1,8 @@
-﻿using LiveKit.Internal.FFIClients.Requests;
+﻿using LiveKit.Audio;
+using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
 using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Tracks;
-using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
@@ -18,19 +18,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             var newStream = request.request;
             newStream.TrackHandle = (ulong)track.Handle!.DangerousGetHandle();
             newStream.Type = AudioStreamType.AudioStreamNative;
-
-            // TODO need to adjust at runtime to avoid inconsistencies
-            if (Application.platform is RuntimePlatform.OSXPlayer
-                || Application.platform is RuntimePlatform.OSXEditor
-                || Application.platform is RuntimePlatform.OSXServer)
-            {
-                newStream.SampleRate = 44100;
-            }
-            else
-            {
-                newStream.SampleRate = 48000;
-            }
-
+            newStream.SampleRate = SampleRate.Hz48000.valueHz;
             newStream.NumChannels = 2;
             AudioStreamInfo audioStreamInfo = new AudioStreamInfo(streamKey, newStream.NumChannels, newStream.SampleRate);
 
