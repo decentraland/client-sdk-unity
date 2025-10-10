@@ -17,7 +17,7 @@ namespace LiveKit.Rooms.Streaming.Audio
     {
         private readonly StreamKey streamKey;
         private readonly ulong trackHandle;
-        
+
         private AudioStreamInternal currentInternal;
         private uint currentSampleRate;
         private uint currentChannels;
@@ -35,7 +35,12 @@ namespace LiveKit.Rooms.Streaming.Audio
             currentInternal = NewInternal(streamKey, trackHandle, currentChannels, currentSampleRate);
         }
 
-        private static AudioStreamInternal NewInternal(StreamKey streamKey, ulong trackHandle, uint channels, uint sampleRate)
+        private static AudioStreamInternal NewInternal(
+            StreamKey streamKey,
+            ulong trackHandle,
+            uint channels,
+            uint sampleRate
+        )
         {
             using FfiRequestWrap<NewAudioStreamRequest> request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
             var newStream = request.request;
@@ -50,7 +55,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             OwnedAudioStream streamInfo = res.NewAudioStream!.Stream!;
 
-            return new AudioStreamInternal(streamInfo, audioStreamInfo);
+            return new AudioStreamInternal(streamInfo, audioStreamInfo, channels, sampleRate);
         }
 
         /// <summary>
@@ -61,7 +66,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (currentChannels != channels || currentSampleRate != sampleRate)
             {
                 bool wasWavActive = currentInternal.WavTeeControl.IsWavActive;
-                
+
                 currentInternal.Dispose();
                 currentChannels = (uint)channels;
                 currentSampleRate = (uint)sampleRate;
@@ -72,7 +77,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                     currentInternal.WavTeeControl.StartWavTeeToDisk();
                 }
             }
-            
+
             currentInternal.ReadAudio(data, channels, sampleRate);
         }
 
@@ -81,11 +86,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             currentInternal.Dispose();
         }
     }
-    
+
     public class AudioStreamInternal : IDisposable
     {
-        private static readonly ResampleQueue Queue = new();
-
         private readonly FfiHandle handle;
 
         /// <summary>
@@ -100,35 +103,38 @@ namespace LiveKit.Rooms.Streaming.Audio
                 )
             );
 
-        private int targetChannels;
-        private int targetSampleRate;
-
         private bool disposed;
 
         public readonly AudioStreamInfo audioStreamInfo;
+        private readonly uint internalChannels;
+        private readonly uint internalSampleRate;
 
         public WavTeeControl WavTeeControl
         {
             get
             {
-                string networkFilePath = 
+                string networkFilePath =
                     StreamKeyUtils.NewPersistentFilePathByStreamKey(audioStreamInfo.streamKey, "network");
                 string resampleFilePath =
-                    StreamKeyUtils.NewPersistentFilePathByStreamKey(audioStreamInfo.streamKey, "resample");
+                    StreamKeyUtils.NewPersistentFilePathByStreamKey(audioStreamInfo.streamKey,
+                        "network_duplicate"); // TODO remove later
                 return new WavTeeControl(buffer, beforeWavFilePath: networkFilePath, afterWavFilePath: resampleFilePath);
             }
         }
 
         public AudioStreamInternal(
             OwnedAudioStream ownedAudioStream,
-            AudioStreamInfo audioStreamInfo
+            AudioStreamInfo audioStreamInfo,
+            uint channels,
+            uint sampleRate
         )
         {
             this.audioStreamInfo = audioStreamInfo;
+            internalChannels = channels;
+            internalSampleRate = sampleRate;
 
             handle = IFfiHandleFactory.Default.NewFfiHandle(ownedAudioStream.Handle!.Id);
             FfiClient.Instance.AudioStreamEventReceived += OnAudioStreamEvent;
-            Queue.Register(this);
         }
 
         /// <summary>
@@ -148,7 +154,6 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
 
             FfiClient.Instance.AudioStreamEventReceived -= OnAudioStreamEvent;
-            Queue.UnRegister(this);
         }
 
         /// <summary>
@@ -156,11 +161,16 @@ namespace LiveKit.Rooms.Streaming.Audio
         /// </summary>
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
-            targetChannels = channels;
-            targetSampleRate = sampleRate;
-
             if (disposed)
                 return;
+
+            if (channels != internalChannels || sampleRate != internalSampleRate)
+            {
+                Utils.Error(
+                    $"Calling ReadAudio on {nameof(AudioStreamInternal)} with wrong args: channels {channels}, sampleRate: {sampleRate}; but intended: channels {internalChannels}, sampleRate {internalSampleRate}"
+                );
+                return;
+            }
 
             data.Fill(0);
 
@@ -200,93 +210,23 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (e.MessageCase != AudioStreamEvent.MessageOneofCase.FrameReceived)
                 return;
 
+            using var frame = new OwnedAudioFrame(e.FrameReceived!.Frame!);
 
-            Queue.Enqueue(this, e.FrameReceived.Frame);
+            if (frame.NumChannels != internalChannels || frame.SamplesPerChannel != internalSampleRate)
+            {
+                Utils.Error(
+                    $"Received frame on {nameof(AudioStreamInternal)} with wrong args from frame: channels {frame.NumChannels}, sampleRate: {frame.SampleRate}; but intended: channels {internalChannels}, sampleRate {internalSampleRate}"
+                );
+                return;
+            }
+
+            using var guard = buffer.Lock();
+            guard.Value.Write(frame);
+            guard.Value.TryWriteWavTee(frame, frame);
 
             // TODO
             // SIMD integration
             // MOVE UNITY sampling to buffer already, don't do it on audio thread
-        }
-
-        private class ResampleQueue
-        {
-            private readonly BlockingCollection<(AudioStreamInternal author, OwnedAudioFrameBuffer buffer)> bufferQueue = new();
-            private readonly AudioResampler audioResampler = AudioResampler.New();
-            private readonly HashSet<AudioStreamInternal> registeredStreams = new();
-
-            private CancellationTokenSource? cancellationTokenSource;
-
-            public void Register(AudioStreamInternal audioStream)
-            {
-                lock (registeredStreams)
-                {
-                    registeredStreams.Add(audioStream);
-                    if (cancellationTokenSource == null)
-                    {
-                        StartThread();
-                    }
-                }
-            }
-
-            public void UnRegister(AudioStreamInternal audioStream)
-            {
-                lock (registeredStreams)
-                {
-                    registeredStreams.Remove(audioStream);
-                    if (registeredStreams.Count == 0)
-                    {
-                        cancellationTokenSource?.Cancel();
-                        cancellationTokenSource = null;
-                    }
-                }
-            }
-
-            public void Enqueue(AudioStreamInternal stream, OwnedAudioFrameBuffer buffer)
-            {
-                bufferQueue.Add((stream, buffer));
-            }
-
-            private void ProcessCandidate(AudioStreamInternal stream, OwnedAudioFrameBuffer buffer)
-            {
-                // We need to pass the exact 10ms chunks, otherwise - crash
-                // Example
-                // #                                                                                             
-                // # Fatal error in: ../common_audio/resampler/push_sinc_resampler.cc, line 52                   
-                // # last system error: 1                                                                        
-                // # Check failed: source_length == resampler_->request_frames() (1104 vs. 480)                  
-                // #   
-                using var rawFrame = new OwnedAudioFrame(buffer);
-
-                if (stream.targetChannels == 0 || stream.targetSampleRate == 0) return;
-                using var frame = audioResampler.RemixAndResample(rawFrame, (uint)stream.targetChannels,
-                    (uint)stream.targetSampleRate);
-                using var guard = stream.buffer.Lock();
-                guard.Value.Write(frame);
-                guard.Value.TryWriteWavTee(rawFrame, frame);
-            }
-
-            private void StartThread()
-            {
-                var token = cancellationTokenSource = new CancellationTokenSource();
-                new Thread(() =>
-                    {
-                        try
-                        {
-                            foreach (var (author, ownedAudioFrameBuffer)
-                                     in bufferQueue.GetConsumingEnumerable(token.Token)!)
-                                ProcessCandidate(author, ownedAudioFrameBuffer);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            // Expected
-                        }
-                        catch (Exception e)
-                        {
-                            Utils.Error($"Caught an unexpected exception in ResampleQueue worker thread: {e.Message}");
-                        }
-                    }
-                ).Start();
-            }
         }
     }
 
