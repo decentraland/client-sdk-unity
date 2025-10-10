@@ -212,7 +212,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             using var frame = new OwnedAudioFrame(e.FrameReceived!.Frame!);
 
-            if (frame.NumChannels != internalChannels || frame.SamplesPerChannel != internalSampleRate)
+            if (frame.NumChannels != internalChannels || frame.SampleRate != internalSampleRate)
             {
                 Utils.Error(
                     $"Received frame on {nameof(AudioStreamInternal)} with wrong args from frame: channels {frame.NumChannels}, sampleRate: {frame.SampleRate}; but intended: channels {internalChannels}, sampleRate {internalSampleRate}"
