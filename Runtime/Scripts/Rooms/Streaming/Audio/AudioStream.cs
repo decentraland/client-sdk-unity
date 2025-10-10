@@ -5,12 +5,84 @@ using System.Threading;
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Audio;
+using LiveKit.Internal.FFIClients;
+using LiveKit.Internal.FFIClients.Requests;
+using LiveKit.Rooms.Tracks;
 using Livekit.Types;
 using RichTypes;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
     public class AudioStream : IDisposable
+    {
+        private readonly StreamKey streamKey;
+        private readonly ulong trackHandle;
+        
+        private AudioStreamInternal currentInternal;
+        private uint currentSampleRate;
+        private uint currentChannels;
+
+        public AudioStreamInfo AudioStreamInfo => currentInternal.audioStreamInfo;
+
+        public WavTeeControl WavTeeControl => currentInternal.WavTeeControl;
+
+        public AudioStream(StreamKey streamKey, ITrack track)
+        {
+            this.streamKey = streamKey;
+            trackHandle = (ulong)track.Handle!.DangerousGetHandle();
+            currentSampleRate = (uint)UnityEngine.AudioSettings.outputSampleRate;
+            currentChannels = 2;
+            currentInternal = NewInternal(streamKey, trackHandle, currentChannels, currentSampleRate);
+        }
+
+        private static AudioStreamInternal NewInternal(StreamKey streamKey, ulong trackHandle, uint channels, uint sampleRate)
+        {
+            using FfiRequestWrap<NewAudioStreamRequest> request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
+            var newStream = request.request;
+            newStream.TrackHandle = trackHandle;
+            newStream.Type = AudioStreamType.AudioStreamNative;
+            newStream.SampleRate = sampleRate;
+            newStream.NumChannels = channels;
+            AudioStreamInfo audioStreamInfo = new AudioStreamInfo(streamKey, newStream.NumChannels, newStream.SampleRate);
+
+            using FfiResponseWrap response = request.Send();
+            FfiResponse res = response;
+
+            OwnedAudioStream streamInfo = res.NewAudioStream!.Stream!;
+
+            return new AudioStreamInternal(streamInfo, audioStreamInfo);
+        }
+
+        /// <summary>
+        /// Supposed to be called from Unity's audio thread.
+        /// </summary>
+        public void ReadAudio(Span<float> data, int channels, int sampleRate)
+        {
+            if (currentChannels != channels || currentSampleRate != sampleRate)
+            {
+                bool wasWavActive = currentInternal.WavTeeControl.IsWavActive;
+                
+                currentInternal.Dispose();
+                currentChannels = (uint)channels;
+                currentSampleRate = (uint)sampleRate;
+                currentInternal = NewInternal(streamKey, trackHandle, currentChannels, currentSampleRate);
+
+                if (wasWavActive)
+                {
+                    currentInternal.WavTeeControl.StartWavTeeToDisk();
+                }
+            }
+            
+            currentInternal.ReadAudio(data, channels, sampleRate);
+        }
+
+        public void Dispose()
+        {
+            currentInternal.Dispose();
+        }
+    }
+    
+    public class AudioStreamInternal : IDisposable
     {
         private static readonly ResampleQueue Queue = new();
 
@@ -47,7 +119,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
         }
 
-        public AudioStream(
+        public AudioStreamInternal(
             OwnedAudioStream ownedAudioStream,
             AudioStreamInfo audioStreamInfo
         )
@@ -82,7 +154,6 @@ namespace LiveKit.Rooms.Streaming.Audio
         /// <summary>
         /// Supposed to be called from Unity's audio thread.
         /// </summary>
-        /// <returns>buffer filled - true or false.</returns>
         public void ReadAudio(Span<float> data, int channels, int sampleRate)
         {
             targetChannels = channels;
@@ -139,13 +210,13 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private class ResampleQueue
         {
-            private readonly BlockingCollection<(AudioStream author, OwnedAudioFrameBuffer buffer)> bufferQueue = new();
+            private readonly BlockingCollection<(AudioStreamInternal author, OwnedAudioFrameBuffer buffer)> bufferQueue = new();
             private readonly AudioResampler audioResampler = AudioResampler.New();
-            private readonly HashSet<AudioStream> registeredStreams = new();
+            private readonly HashSet<AudioStreamInternal> registeredStreams = new();
 
             private CancellationTokenSource? cancellationTokenSource;
 
-            public void Register(AudioStream audioStream)
+            public void Register(AudioStreamInternal audioStream)
             {
                 lock (registeredStreams)
                 {
@@ -157,7 +228,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 }
             }
 
-            public void UnRegister(AudioStream audioStream)
+            public void UnRegister(AudioStreamInternal audioStream)
             {
                 lock (registeredStreams)
                 {
@@ -170,12 +241,12 @@ namespace LiveKit.Rooms.Streaming.Audio
                 }
             }
 
-            public void Enqueue(AudioStream stream, OwnedAudioFrameBuffer buffer)
+            public void Enqueue(AudioStreamInternal stream, OwnedAudioFrameBuffer buffer)
             {
                 bufferQueue.Add((stream, buffer));
             }
 
-            private void ProcessCandidate(AudioStream stream, OwnedAudioFrameBuffer buffer)
+            private void ProcessCandidate(AudioStreamInternal stream, OwnedAudioFrameBuffer buffer)
             {
                 // We need to pass the exact 10ms chunks, otherwise - crash
                 // Example

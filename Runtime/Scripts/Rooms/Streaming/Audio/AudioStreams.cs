@@ -14,24 +14,12 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         protected override AudioStream NewStreamInstance(StreamKey streamKey, ITrack track)
         {
-            using var request = FFIBridge.Instance.NewRequest<NewAudioStreamRequest>();
-            var newStream = request.request;
-            newStream.TrackHandle = (ulong)track.Handle!.DangerousGetHandle();
-            newStream.Type = AudioStreamType.AudioStreamNative;
-            newStream.SampleRate = SampleRate.Hz48000.valueHz;
-            newStream.NumChannels = 2;
-            AudioStreamInfo audioStreamInfo = new AudioStreamInfo(streamKey, newStream.NumChannels, newStream.SampleRate);
-
-            using var response = request.Send();
-            FfiResponse res = response;
-
-            var streamInfo = res.NewAudioStream!.Stream;
-            return new AudioStream(streamInfo!, audioStreamInfo);
+            return new AudioStream(streamKey, track);
         }
 
         protected override AudioStreamInfo InfoFromStream(AudioStream stream)
         {
-            return stream.audioStreamInfo;
+            return stream.AudioStreamInfo;
         }
     }
 }
