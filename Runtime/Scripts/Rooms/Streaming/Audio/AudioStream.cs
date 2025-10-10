@@ -209,6 +209,10 @@ namespace LiveKit.Rooms.Streaming.Audio
                         {
                             // Expected
                         }
+                        catch (Exception e)
+                        {
+                            Utils.Error($"Caught an unexpected exception in ResampleQueue worker thread: {e.Message}");
+                        }
                     }
                 ).Start();
             }
