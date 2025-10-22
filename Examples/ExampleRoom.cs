@@ -139,7 +139,7 @@ public class ExampleRoom : MonoBehaviour
                 }
             }
 
-            foreach (var candidate in removeCandidates!)
+            foreach (var candidate in removeCandidates)
             {
                 if (audioSourcesMap.Remove(candidate, out var source))
                 {
