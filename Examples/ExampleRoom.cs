@@ -20,6 +20,7 @@ using LiveKit.RtcSources.Video;
 using LiveKit.Runtime.Scripts.Audio;
 using RichTypes;
 using UnityEngine.Audio;
+using UnityEngine.Pool;
 using UnityEngine.SceneManagement;
 
 public class ExampleRoom : MonoBehaviour
@@ -27,8 +28,8 @@ public class ExampleRoom : MonoBehaviour
     private Room? m_Room;
     private MicrophoneRtcAudioSource? microphoneSource;
 
-    private readonly Dictionary<AudioStream, LivekitAudioSource> audioSourcesMap = new();
-    private readonly Dictionary<IVideoStream, LivekitVideoSource> videoSourcesMap = new();
+    private readonly Dictionary<StreamKey, LivekitAudioSource> audioSourcesMap = new();
+    private readonly Dictionary<StreamKey, LivekitVideoSource> videoSourcesMap = new();
     private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
 
     private readonly List<(ITrack track, RtcVideoSource videoSource)> publishedVideoTracks = new();
@@ -59,44 +60,44 @@ public class ExampleRoom : MonoBehaviour
         foreach (var (remoteParticipantIdentity, _) in m_Room.Participants.RemoteParticipantIdentities())
         {
             var participant = m_Room.Participants.RemoteParticipant(remoteParticipantIdentity)!;
+
+            // Add new tracks
             foreach (var (key, value) in participant.Tracks)
             {
+                StreamKey streamKey = new StreamKey(remoteParticipantIdentity, key!);
                 switch (value.Kind)
                 {
                     case TrackKind.KindUnknown:
                         break;
                     case TrackKind.KindAudio:
                     {
-                        Weak<AudioStream> track =
-                            m_Room.AudioStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        Weak<AudioStream> track = m_Room.AudioStreams.ActiveStream(streamKey);
                         if (track.Resource.Has)
                         {
                             var audioStream = track.Resource.Value;
-                            if (audioSourcesMap.ContainsKey(audioStream) == false)
+                            if (audioSourcesMap.ContainsKey(streamKey) == false)
                             {
                                 var livekitAudioSource = LivekitAudioSource.New(true);
                                 livekitAudioSource.Construct(track);
                                 livekitAudioSource.Play();
                                 Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
-                                audioSourcesMap[audioStream] = livekitAudioSource;
+                                audioSourcesMap[streamKey] = livekitAudioSource;
                             }
                         }
                     }
                         break;
                     case TrackKind.KindVideo:
                     {
-                        Weak<IVideoStream> track =
-                            m_Room.VideoStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        Weak<IVideoStream> track = m_Room.VideoStreams.ActiveStream(streamKey);
                         if (track.Resource.Has)
                         {
-                            var videoStream = track.Resource.Value;
-                            if (videoSourcesMap.ContainsKey(videoStream) == false)
+                            if (videoSourcesMap.ContainsKey(streamKey) == false)
                             {
                                 var livekitVideoSource = LivekitVideoSource.New(videoParent, true);
                                 livekitVideoSource.Construct(track);
                                 livekitVideoSource.Play();
                                 Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
-                                videoSourcesMap[videoStream] = livekitVideoSource;
+                                videoSourcesMap[streamKey] = livekitVideoSource;
                             }
                         }
                     }
@@ -105,16 +106,55 @@ public class ExampleRoom : MonoBehaviour
                         throw new ArgumentOutOfRangeException();
                 }
             }
+
+            // Remove unpublished
+            using PooledObject<List<StreamKey>> _ = ListPool<StreamKey>.Get(out List<StreamKey> removeCandidates);
+            foreach (KeyValuePair<StreamKey, LivekitVideoSource> source in videoSourcesMap)
+            {
+                Weak<IVideoStream> stream = m_Room.VideoStreams.ActiveStream(source.Key);
+                Option<IVideoStream> resource = stream.Resource;
+                if (resource.Has == false)
+                {
+                    removeCandidates!.Add(source.Key);
+                }
+            }
+
+            foreach (var candidate in removeCandidates!)
+            {
+                if (videoSourcesMap.Remove(candidate, out var source))
+                {
+                    Destroy(source!.gameObject);
+                }
+            }
+
+            removeCandidates.Clear();
+            foreach (KeyValuePair<StreamKey, LivekitAudioSource> source in audioSourcesMap)
+            {
+                Weak<AudioStream> stream = m_Room.AudioStreams.ActiveStream(source.Key);
+                Option<AudioStream> resource = stream.Resource;
+                if (resource.Has == false)
+                {
+                    removeCandidates.Add(source.Key);
+                }
+            }
+
+            foreach (var candidate in removeCandidates!)
+            {
+                if (audioSourcesMap.Remove(candidate, out var source))
+                {
+                    Destroy(source!.gameObject);
+                }
+            }
         }
     }
 
     private async UniTaskVoid StartAsync()
     {
-        enableAudioSources.onValueChanged.AddListener(v =>
+        enableAudioSources.onValueChanged.AddListener(enable =>
         {
-            foreach (KeyValuePair<AudioStream, LivekitAudioSource> pair in audioSourcesMap)
+            foreach (KeyValuePair<StreamKey, LivekitAudioSource> pair in audioSourcesMap)
             {
-                if (v) pair.Value.Play();
+                if (enable) pair.Value.Play();
                 else pair.Value.Stop();
             }
         });
