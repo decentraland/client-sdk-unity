@@ -14,6 +14,7 @@ using LiveKit.Rooms.Participants;
 using LiveKit.Rooms.Streaming;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Rooms.Streaming.Video;
+using LiveKit.Rooms.Tracks;
 using LiveKit.Rooms.VideoStreaming;
 using LiveKit.RtcSources.Video;
 using LiveKit.Runtime.Scripts.Audio;
@@ -29,6 +30,8 @@ public class ExampleRoom : MonoBehaviour
     private readonly Dictionary<AudioStream, LivekitAudioSource> audioSourcesMap = new();
     private readonly Dictionary<IVideoStream, LivekitVideoSource> videoSourcesMap = new();
     private readonly List<(Room room, IRtcAudioSource bot)> botInstances = new();
+
+    private readonly List<(ITrack track, RtcVideoSource videoSource)> publishedVideoTracks = new();
 
     public Dropdown MicrophoneDropdownMenu;
     public Button DisconnectButton;
@@ -64,7 +67,8 @@ public class ExampleRoom : MonoBehaviour
                         break;
                     case TrackKind.KindAudio:
                     {
-                        Weak<AudioStream> track = m_Room.AudioStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        Weak<AudioStream> track =
+                            m_Room.AudioStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
                         if (track.Resource.Has)
                         {
                             var audioStream = track.Resource.Value;
@@ -81,13 +85,14 @@ public class ExampleRoom : MonoBehaviour
                         break;
                     case TrackKind.KindVideo:
                     {
-                        Weak<IVideoStream> track = m_Room.VideoStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
+                        Weak<IVideoStream> track =
+                            m_Room.VideoStreams.ActiveStream(new StreamKey(remoteParticipantIdentity, key!));
                         if (track.Resource.Has)
                         {
                             var videoStream = track.Resource.Value;
                             if (videoSourcesMap.ContainsKey(videoStream) == false)
                             {
-                                var livekitVideoSource = LivekitVideoSource.New(videoParent,true);
+                                var livekitVideoSource = LivekitVideoSource.New(videoParent, true);
                                 livekitVideoSource.Construct(track);
                                 livekitVideoSource.Play();
                                 Debug.Log($"Participant {remoteParticipantIdentity} added track {key}");
@@ -190,7 +195,18 @@ public class ExampleRoom : MonoBehaviour
         await UniTask.WaitUntil(() => publishTask.IsDone);
 
         // Camera usage
+        await PublishNewVideoTrackAsync();
+        Debug.Log("Init finished");
+    }
 
+    [ContextMenu(nameof(PublishNewVideoTrack))]
+    public void PublishNewVideoTrack()
+    {
+        PublishNewVideoTrackAsync().Forget();
+    }
+
+    private async UniTask PublishNewVideoTrackAsync()
+    {
         Result<WebCameraVideoInput> inputResult = WebCameraVideoInput.NewDefault();
         if (inputResult.Success == false)
         {
@@ -213,8 +229,23 @@ public class ExampleRoom : MonoBehaviour
         var publishVideoTask = m_Room.Participants.LocalParticipant()
             .PublishTrack(videoTrack, videoTrackOptions, CancellationToken.None);
         await UniTask.WaitUntil(() => publishVideoTask.IsDone);
+        publishedVideoTracks.Add((videoTrack, videoSource));
+        Debug.Log($"Published video track, current count: {publishedVideoTracks.Count}");
+    }
 
-        Debug.Log("Init finished");
+    [ContextMenu(nameof(UnpublishLastVideoTrack))]
+    private void UnpublishLastVideoTrack()
+    {
+        if (publishedVideoTracks.Count == 0)
+        {
+            return;
+        }
+
+        int index = publishedVideoTracks.Count - 1;
+        (ITrack track, RtcVideoSource videoSource) last = publishedVideoTracks[index];
+        publishedVideoTracks.RemoveAt(index);
+        m_Room?.Participants.LocalParticipant().UnpublishTrack(last.track, stopOnUnpublish: true);
+        Debug.Log($"Unpublished video track, current count: {publishedVideoTracks.Count}");
     }
 
     private void OnDestroy()
