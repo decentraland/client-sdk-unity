@@ -1,6 +1,6 @@
+using Cysharp.Threading.Tasks;
 using LiveKit.Internal;
 using LiveKit.Proto;
-using LiveKit.Rooms.Streaming;
 using UnityEngine;
 
 namespace LiveKit.Rooms.VideoStreaming
@@ -33,8 +33,14 @@ namespace LiveKit.Rooms.VideoStreaming
 
             disposed = true;
             handle.Dispose();
-            if (lastDecoded != null) Object.Destroy(lastDecoded);
+            DisposeLastDecodedIfNeededAsync().Forget();
             FfiClient.Instance.VideoStreamEventReceived -= OnVideoStreamEvent;
+        }
+
+        private async UniTaskVoid DisposeLastDecodedIfNeededAsync()
+        {
+            await UniTask.SwitchToMainThread();
+            if (lastDecoded != null) Object.Destroy(lastDecoded);
         }
 
         private void OnVideoStreamEvent(VideoStreamEvent e)
