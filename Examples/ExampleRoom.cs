@@ -123,6 +123,7 @@ public class ExampleRoom : MonoBehaviour
             {
                 if (videoSourcesMap.Remove(candidate, out var source))
                 {
+                    Debug.Log($"Remove remote video track: {candidate}");
                     Destroy(source!.gameObject);
                 }
             }
@@ -142,6 +143,7 @@ public class ExampleRoom : MonoBehaviour
             {
                 if (audioSourcesMap.Remove(candidate, out var source))
                 {
+                    Debug.Log($"Remove remote audio track: {candidate}");
                     Destroy(source!.gameObject);
                 }
             }
