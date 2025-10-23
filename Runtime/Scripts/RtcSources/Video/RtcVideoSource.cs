@@ -27,7 +27,11 @@ namespace LiveKit.RtcSources.Video
 
     public readonly struct VideoInputFrame
     {
+        /// <summary>
+        /// Valid until next texture read, consume immediately
+        /// </summary>
         public readonly ulong readOnlyPointer;
+        public readonly int dataLength;
         public readonly VideoBufferType bufferType;
         public readonly VideoSize size;
         public readonly uint stride;
@@ -39,6 +43,7 @@ namespace LiveKit.RtcSources.Video
                 readOnlyPointer = (ulong)data.GetUnsafeReadOnlyPtr()!;
             }
 
+            dataLength = data.Length;
             this.bufferType = bufferType;
             this.size = size;
             stride = size.width * (uint)VideoUtils.StrideFromVideoBufferType(bufferType);

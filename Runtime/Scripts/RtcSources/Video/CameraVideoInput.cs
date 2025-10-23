@@ -144,7 +144,10 @@ namespace LiveKit.RtcSources.Video
 
             if (bufferToRenderTexture)
             {
-                if (bufferTexture == null)
+                if (bufferTexture == null
+                    // Additional checks for width/height equality is needed because mac's camera at first call gives 16x16 pixels instead of real resolution
+                    || bufferTexture.width != texture.width
+                    || bufferTexture.height != texture.height)
                 {
                     RenderTextureFormat format = VideoUtils.RenderTextureFormatFrom(textureFormat);
                     bufferTexture = new RenderTexture(texture.width, texture.height, 0, format);
