@@ -33,8 +33,14 @@ namespace LiveKit.RtcSources.Video
                 TextureFormat.R16 => RenderTextureFormat.R16,
                 TextureFormat.RG16 => RenderTextureFormat.RG16,
                 TextureFormat.RG32 => RenderTextureFormat.RG32,
-                TextureFormat.RGBA32 or TextureFormat.ARGB32 or TextureFormat.BGRA32 => RenderTextureFormat.ARGB32,
-                TextureFormat.ARGB4444 or TextureFormat.RGBA4444 => RenderTextureFormat.ARGB4444,
+                TextureFormat.RGBA32 => RenderTextureFormat.ARGB32, // hack, no true rgba32
+                TextureFormat.ARGB32 => RenderTextureFormat.ARGB32,
+                TextureFormat.BGRA32 =>
+// hack, BGRA doesn't support read on MacOS :'B8G8R8A8_UNorm' doesn't support ReadPixels usage on this platform. Async GPU readback failed.
+                    RenderTextureFormat.ARGB32,
+                TextureFormat.ARGB4444 or TextureFormat.RGBA4444 =>
+                    RenderTextureFormat.ARGB4444, // hack, only this 4444 format
+
                 TextureFormat.RGB565 => RenderTextureFormat.RGB565,
                 TextureFormat.RHalf => RenderTextureFormat.RHalf,
                 TextureFormat.RGHalf => RenderTextureFormat.RGHalf,
@@ -47,7 +53,7 @@ namespace LiveKit.RtcSources.Video
                 // Compressed / special formats: no direct RT support
                 _ => throw new NotSupportedException($"Format not supported: {format.ToString()}"),
             };
-        
+
         public static int BytesPerPixel(RenderTextureFormat format) =>
             format switch
             {
