@@ -1,10 +1,12 @@
 using System;
 using System.Linq;
+using Cysharp.Threading.Tasks;
 using LiveKit.Proto;
 using RichTypes;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Object = UnityEngine.Object;
 
 namespace LiveKit.RtcSources.Video
 {
@@ -58,6 +60,14 @@ namespace LiveKit.RtcSources.Video
         public void Dispose()
         {
             webCamTexture.Stop();
+            DestroyAsync().Forget();
+            return;
+
+            async UniTaskVoid DestroyAsync()
+            {
+                await UniTask.SwitchToMainThread();
+                Object.Destroy(webCamTexture);
+            }
         }
 
         public void Start()

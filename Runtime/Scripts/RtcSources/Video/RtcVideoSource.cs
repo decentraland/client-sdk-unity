@@ -87,6 +87,7 @@ namespace LiveKit.RtcSources.Video
 
         public void Stop()
         {
+            videoInput.Stop();
             runningCancellationTokenSource?.Cancel();
             runningCancellationTokenSource?.Dispose();
             runningCancellationTokenSource = null;
