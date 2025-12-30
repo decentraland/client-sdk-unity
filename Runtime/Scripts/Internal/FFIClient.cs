@@ -17,8 +17,6 @@ namespace LiveKit.Internal
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
-
-#if !UNITY_STANDALONE_LINUX && !UNITY_EDITOR_LINUX
     internal sealed class FfiClient : IFFIClient
     {
         private static bool initialized = false;
@@ -430,28 +428,4 @@ namespace LiveKit.Internal
             };
         }
     }
-#else // Linux
-    internal sealed class FfiClient : IFFIClient
-    {
-        public void Initialize()
-        {
-            throw new PlatformNotSupportedException();
-        }
-
-        public bool Initialized()
-        {
-            throw new PlatformNotSupportedException();
-        }
-        
-        public FfiResponse SendRequest(FfiRequest request)
-        {
-            throw new PlatformNotSupportedException();
-        }
-
-        public void Release(FfiResponse response)
-        {
-            throw new PlatformNotSupportedException();
-        }
-    }
-#endif // Linux
 }
