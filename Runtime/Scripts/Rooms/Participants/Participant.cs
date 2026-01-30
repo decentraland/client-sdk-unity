@@ -157,6 +157,8 @@ namespace LiveKit.Rooms.Participants
         private readonly LiveKit.Participant jsParticipant;
         private readonly IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
 
+        // TODO Need to solve the conflict: Props must be none null, but mock props would be not valid too.
+        // Underlying implementation is not null safety.
         public string Sid => jsParticipant.Sid;
         public string Identity => jsParticipant.Identity;
         public string Name => jsParticipant.Name;
@@ -168,10 +170,11 @@ namespace LiveKit.Rooms.Participants
         {
             get
             {
-                if (qualityMap.TryGetValue((Sid, Identity), out LKConnectionQuality quality))
-                {
-                    return quality;
-                }
+                if (jsParticipant.Sid != null && jsParticipant.Identity != null)
+                    if (qualityMap.TryGetValue((Sid, Identity), out LKConnectionQuality quality))
+                    {
+                        return quality;
+                    }
 
                 // By default quality is poor
                 return LKConnectionQuality.QualityPoor;
