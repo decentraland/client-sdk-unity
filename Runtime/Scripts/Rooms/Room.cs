@@ -4,37 +4,48 @@ using LiveKit.Internal;
 using LiveKit.Proto;
 using Google.Protobuf.Collections;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using LiveKit.Internal.FFIClients.Pools.Memory;
-using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Rooms.ActiveSpeakers;
-using LiveKit.Rooms.AsyncInstractions;
 using LiveKit.Rooms.DataPipes;
 using LiveKit.Rooms.Info;
 using LiveKit.Rooms.Participants;
-using LiveKit.Rooms.Participants.Factory;
-using LiveKit.Rooms.Streaming.Audio;
-using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
-using LiveKit.Rooms.Tracks.Factory;
 using LiveKit.Rooms.Tracks.Hub;
 using LiveKit.Rooms.VideoStreaming;
 using RichTypes;
+using DCL.LiveKit.Public;
 using RoomInfo = LiveKit.Proto.RoomInfo;
+using System.Collections.Generic;
+
+#if !UNITY_WEBGL
+using LiveKit.Rooms.AsyncInstractions;
+using LiveKit.Rooms.Participants.Factory;
+using LiveKit.Rooms.Tracks.Factory;
+using LiveKit.Rooms.Streaming.Audio;
+using LiveKit.Rooms.TrackPublications;
+#endif
+
+using Utils = LiveKit.Internal.Utils;
+
+#if UNITY_WEBGL
+using JsRoom = LiveKit.Room;
+#endif
 
 namespace LiveKit.Rooms
 {
     public class Room : IRoom
     {
+#region delegates
         public delegate void MetaDelegate(string metaData);
-
 
         public delegate void SidDelegate(string sid);
 
-
         public delegate void RemoteParticipantDelegate(Participant participant);
+#endregion
 
 
+#if !UNITY_WEBGL
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
         private readonly IMutableParticipantsHub participantsHub;
@@ -63,6 +74,7 @@ namespace LiveKit.Rooms
         public IRoomInfo Info => roomInfo;
 
         private FfiHandle? handle;
+
         private ulong handleId;
 
         public event MetaDelegate? RoomMetadataChanged;
@@ -156,15 +168,15 @@ namespace LiveKit.Rooms
             using var response = request.Send();
         }
 
-        public Task<Result> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe)
+        public async UniTask<Result> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe)
         {
             using var response = FFIBridge.Instance.SendConnectRequest(url, authToken, autoSubscribe);
             FfiResponse res = response;
-            return new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken)
+            return await new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken)
                 .AwaitWithSuccess();
         }
 
-        public async Task DisconnectAsync(CancellationToken cancellationToken)
+        public async UniTask DisconnectAsync(CancellationToken cancellationToken)
         {
             if (handle == null)
             {
@@ -182,7 +194,7 @@ namespace LiveKit.Rooms
         }
 
 
-        private void OnEventReceived(RoomEvent e)
+        private void OnEventReceived(LiveKit.Proto.RoomEvent e)
         {
             if (e.RoomHandle != handleId)
             {
@@ -194,36 +206,36 @@ namespace LiveKit.Rooms
                 $"Room {Info.Name} Event Type: {e.MessageCase}   ---> ({e.RoomHandle} <=> {handleId})");
             switch (e.MessageCase)
             {
-                case RoomEvent.MessageOneofCase.RoomMetadataChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.RoomMetadataChanged:
                     roomInfo.UpdateMetadata(e.RoomMetadataChanged!.Metadata!);
                     RoomMetadataChanged?.Invoke(roomInfo.Metadata);
                     break;
-                case RoomEvent.MessageOneofCase.RoomSidChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.RoomSidChanged:
                     roomInfo.UpdateSid(e.RoomSidChanged!.Sid!);
                     RoomSidChanged?.Invoke(roomInfo.Sid);
                     break;
-                case RoomEvent.MessageOneofCase.ParticipantMetadataChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ParticipantMetadataChanged:
                 {
                     var participant = this.ParticipantEnsured(e.ParticipantMetadataChanged!.ParticipantIdentity!);
                     participant.UpdateMeta(e.ParticipantMetadataChanged!.Metadata!);
                     participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.MetadataChanged);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ParticipantNameChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ParticipantNameChanged:
                 {
                     var participant = this.ParticipantEnsured(e.ParticipantNameChanged!.ParticipantIdentity!);
                     participant.UpdateName(e.ParticipantNameChanged!.Name!);
                     participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.NameChanged);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ParticipantAttributesChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ParticipantAttributesChanged:
                 {
                     var participant = this.ParticipantEnsured(e.ParticipantAttributesChanged!.ParticipantIdentity!);
                     participant.UpdateAttributes(e.ParticipantAttributesChanged.Attributes);
                     participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.AttributesChanged);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ParticipantConnected:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ParticipantConnected:
                 {
                     var participant = participantFactory.NewRemote(
                         this,
@@ -236,7 +248,7 @@ namespace LiveKit.Rooms
                     participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.Connected);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ParticipantDisconnected:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ParticipantDisconnected:
                 {
                     var info = e.ParticipantDisconnected!;
                     var participant = participantsHub.RemoteParticipantEnsured(info.ParticipantIdentity!);
@@ -244,7 +256,7 @@ namespace LiveKit.Rooms
                     participantsHub.NotifyParticipantUpdate(participant, UpdateFromParticipant.Disconnected);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.LocalTrackUnpublished:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.LocalTrackUnpublished:
                 {
                     if (Participants.LocalParticipant().Tracks.ContainsKey(e.LocalTrackUnpublished!.PublicationSid))
                     {
@@ -259,7 +271,7 @@ namespace LiveKit.Rooms
                     }
                 }
                     break;
-                case RoomEvent.MessageOneofCase.LocalTrackPublished:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.LocalTrackPublished:
                 {
                     if (Participants.LocalParticipant().Tracks.ContainsKey(e.LocalTrackPublished!.TrackSid))
                     {
@@ -269,11 +281,11 @@ namespace LiveKit.Rooms
                     }
                     else
                     {
-                        Utils.Debug("Unable to find local track after publish: " + e.LocalTrackPublished.TrackSid);
+                        LiveKit.Internal.Utils.Debug("Unable to find local track after publish: " + e.LocalTrackPublished.TrackSid);
                     }
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackPublished:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackPublished:
                 {
                     var participant = participantsHub.RemoteParticipantEnsured(e.TrackPublished!.ParticipantIdentity!);
                     var publication = trackPublicationFactory.NewTrackPublication(e.TrackPublished.Publication!.Handle,
@@ -282,7 +294,7 @@ namespace LiveKit.Rooms
                     TrackPublished?.Invoke(publication, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackUnpublished:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackUnpublished:
                 {
                     var participant =
                         participantsHub.RemoteParticipantEnsured(e.TrackUnpublished!.ParticipantIdentity!);
@@ -290,7 +302,7 @@ namespace LiveKit.Rooms
                     TrackUnpublished?.Invoke(unpublishedTrack, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackSubscribed:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackSubscribed:
                 {
                     var info = e.TrackSubscribed!.Track!.Info!;
                     var participant = participantsHub.RemoteParticipantEnsured(e.TrackSubscribed.ParticipantIdentity!);
@@ -302,7 +314,7 @@ namespace LiveKit.Rooms
                     TrackSubscribed?.Invoke(track, publication, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackUnsubscribed:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackUnsubscribed:
                 {
                     var participant = this.ParticipantEnsured(e.TrackUnsubscribed!.ParticipantIdentity!);
                     var publication = participant.TrackPublication(e.TrackUnsubscribed.TrackSid!);
@@ -310,7 +322,7 @@ namespace LiveKit.Rooms
                     TrackUnsubscribed?.Invoke(removedTrack!, publication, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackMuted:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackMuted:
                 {
                     var trackMuted = e.TrackMuted!;
                     var participant = this.ParticipantEnsured(trackMuted.ParticipantIdentity!);
@@ -319,7 +331,7 @@ namespace LiveKit.Rooms
                     TrackMuted?.Invoke(publication, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.TrackUnmuted:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackUnmuted:
                 {
                     var trackUnmuted = e.TrackUnmuted!;
                     var participant = this.ParticipantEnsured(trackUnmuted.ParticipantIdentity!);
@@ -328,12 +340,12 @@ namespace LiveKit.Rooms
                     TrackUnmuted?.Invoke(publication, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ActiveSpeakersChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ActiveSpeakersChanged:
                 {
                     activeSpeakers.UpdateCurrentActives(e.ActiveSpeakersChanged!.ParticipantIdentities!);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ConnectionQualityChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ConnectionQualityChanged:
                 {
                     var participant = this.ParticipantEnsured(e.ConnectionQualityChanged!.ParticipantIdentity!);
                     var quality = e.ConnectionQualityChanged.Quality;
@@ -341,7 +353,7 @@ namespace LiveKit.Rooms
                     ConnectionQualityChanged?.Invoke(quality, participant);
                 }
                     break;
-                case RoomEvent.MessageOneofCase.DataPacketReceived:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.DataPacketReceived:
                 {
                     var dataReceivedPacket = e.DataPacketReceived;
 
@@ -355,37 +367,37 @@ namespace LiveKit.Rooms
                     }
                 }
                     break;
-                case RoomEvent.MessageOneofCase.ConnectionStateChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.ConnectionStateChanged:
                     roomInfo.UpdateConnectionState(e.ConnectionStateChanged!.State);
                     ConnectionStateChanged?.Invoke(e.ConnectionStateChanged!.State);
                     break;
-                /*case RoomEvent.MessageOneofCase.Connected:
+                /*case LiveKit.Proto.RoomEvent.MessageOneofCase.Connected:
                     Connected?.Invoke(this);
                     break;*/
-                case RoomEvent.MessageOneofCase.Eos:
-                case RoomEvent.MessageOneofCase.Disconnected:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.Eos:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.Disconnected:
                     var disconnectReason = e.Disconnected?.Reason ?? DisconnectReason.UnknownReason;
                     ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected, disconnectReason);
                     break;
-                case RoomEvent.MessageOneofCase.Reconnecting:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.Reconnecting:
                     ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting);
                     break;
-                case RoomEvent.MessageOneofCase.Reconnected:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.Reconnected:
                     ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnected);
                     break;
-                case RoomEvent.MessageOneofCase.None:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.None:
                     //ignore
                     break;
-                case RoomEvent.MessageOneofCase.TrackSubscriptionFailed:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackSubscriptionFailed:
                     //ignore
                     break;
-                case RoomEvent.MessageOneofCase.E2EeStateChanged:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.E2EeStateChanged:
                     //ignore
                     break;
-                case RoomEvent.MessageOneofCase.TranscriptionReceived:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.TranscriptionReceived:
                     //ignore
                     break;
-                case RoomEvent.MessageOneofCase.LocalTrackSubscribed:
+                case LiveKit.Proto.RoomEvent.MessageOneofCase.LocalTrackSubscribed:
                     //ignore
                     break;
                 default:
@@ -399,8 +411,8 @@ namespace LiveKit.Rooms
             OwnedParticipant participant,
             RepeatedField<ConnectCallback.Types.ParticipantWithTracks> participants)
         {
-            Utils.Debug($"OnConnect.... {roomHandle.Id}  {participant.Handle!.Id}");
-            Utils.Debug(info);
+            LiveKit.Internal.Utils.Debug($"OnConnect.... {roomHandle.Id}  {participant.Handle!.Id}");
+            LiveKit.Internal.Utils.Debug(info);
 
             activeSpeakers.Clear();
             participantsHub.Clear();
@@ -435,7 +447,7 @@ namespace LiveKit.Rooms
         private void OnDisconnectReceived(DisconnectCallback e)
         {
             FfiClient.Instance.DisconnectReceived -= OnDisconnectReceived;
-            Utils.Debug($"OnDisconnect.... {e}");
+            LiveKit.Internal.Utils.Debug($"OnDisconnect.... {e}");
         }
 
         public void OnDisconnect()
@@ -443,6 +455,186 @@ namespace LiveKit.Rooms
             FfiClient.Instance.RoomEventReceived -= OnEventReceived;
             activeSpeakers.Clear();
         }
+
+#else
+        // WebGL implementation
+
+        private static readonly TimeSpan POLL_DELAY = TimeSpan.FromMilliseconds(500);
+
+        private readonly JsRoom jsRoom;
+
+        private readonly JsRoomInfo roomInfo;
+        private readonly NoActiveSpeakers activeSpeakers;
+        private readonly JsParticipantsHub jsParticipantsHub;
+        private readonly JsDataPipe jsDataPipe;
+        
+        private readonly Dictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
+
+        private bool disposed;
+
+
+        public event MetaDelegate? RoomMetadataChanged;
+        public event SidDelegate? RoomSidChanged;
+
+        public event ConnectionQualityChangeDelegate? ConnectionQualityChanged;
+        public event ConnectionStateChangeDelegate? ConnectionStateChanged;
+        public event ConnectionDelegate? ConnectionUpdated;
+ 
+        public IRoomInfo Info => roomInfo;
+        
+        public IActiveSpeakers ActiveSpeakers => activeSpeakers;
+        
+        public IParticipantsHub Participants => jsParticipantsHub;
+        
+        public IDataPipe DataPipe => jsDataPipe;
+
+        /* Js Implementation accepts options, can be expanded later
+           public struct RoomOptions
+           {
+           [JsonProperty("adaptiveStream")]
+           public bool AdaptiveStream;
+           [JsonProperty("dynacast")]
+           public bool Dynacast;
+           [JsonProperty("audioCaptureDefaults")]
+           public AudioCaptureOptions? AudioCaptureDefaults;
+           [JsonProperty("videoCaptureDefaults")]
+           public VideoCaptureOptions? VideoCaptureDefaults;
+           [JsonProperty("publishDefaults")]
+           public TrackPublishDefaults? PublishDefaults;
+           [JsonProperty("stopLocalTrackOnUnpublish")]
+           public bool StopLocalTrackOnUnpublish;
+           [JsonProperty("expDisableLayerPause")]
+           public bool ExpDisableLayerPause;
+           }
+        */
+        public Room()
+        {
+            jsRoom = new JsRoom();
+            qualityMap = new Dictionary<(string sid, string identity), LKConnectionQuality>();
+
+            // TODO (enhance) dispose to avoid the UniTask loop leakage (private ListenLoopAsync)?
+            // From other side the current design suppose to reuse the room and won't dispose it
+            roomInfo = JsRoomInfo.NewAndStart(jsRoom, newSid => RoomSidChanged?.Invoke(newSid));
+            activeSpeakers = new NoActiveSpeakers(); // Not needed for this iteration
+            jsParticipantsHub = new JsParticipantsHub(jsRoom, qualityMap);
+            jsDataPipe = new JsDataPipe(jsRoom, qualityMap);
+
+
+            disposed = false;
+
+            WireEvents(jsRoom);
+            PollStateAsync().Forget();
+        }
+
+        private void WireEvents(JsRoom r)
+        {
+            r.RoomMetadataChanged += (string metadata) => 
+            {
+                RoomMetadataChanged?.Invoke(metadata);
+            };
+
+            // Keep the qualityMap warm
+            r.ConnectionQualityChanged += (ConnectionQuality quality, Participant participant) =>
+            {
+                qualityMap[(participant.Sid, participant.Identity)] = LKConnectionQualityUtils.FromJsQuality(quality);
+            };
+
+            r.ConnectionQualityChanged += (LiveKit.ConnectionQuality quality, LiveKit.Participant participant) =>
+            {
+                LKConnectionQuality q = quality switch
+                {
+                    LiveKit.ConnectionQuality.Unknown => LKConnectionQuality.QualityLost,
+                    LiveKit.ConnectionQuality.Poor => LKConnectionQuality.QualityPoor,
+                    LiveKit.ConnectionQuality.Good => LKConnectionQuality.QualityGood,
+                    LiveKit.ConnectionQuality.Excellent => LKConnectionQuality.QualityExcellent,
+                };
+
+                LKParticipant wrap =  new LKParticipant(participant, qualityMap);
+                ConnectionQualityChanged?.Invoke(q, wrap);
+            };
+
+            r.Reconnecting += () => ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting, null);
+            r.Reconnected += () => ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnected, null);
+            r.Disconnected += (LiveKit.DisconnectReason? reason) =>
+            {
+                LKDisconnectReason? lkDisconnectReason = null;
+                if (reason != null)
+                {
+                    lkDisconnectReason = reason.Value switch
+                    {
+                        DisconnectReason.UNKNOWN_REASON => LKDisconnectReason.UnknownReason,
+                        DisconnectReason.CLIENT_INITIATED => LKDisconnectReason.ClientInitiated,
+                        DisconnectReason.DUPLICATE_IDENTITY => LKDisconnectReason.DuplicateIdentity,
+                        DisconnectReason.SERVER_SHUTDOWN => LKDisconnectReason.ServerShutdown,
+                        DisconnectReason.PARTICIPANT_REMOVED => LKDisconnectReason.ParticipantRemoved,
+                        DisconnectReason.ROOM_DELETED => LKDisconnectReason.RoomDeleted,
+                        DisconnectReason.STATE_MISMATCH => LKDisconnectReason.StateMismatch,
+                        DisconnectReason.UNRECOGNIZED => LKDisconnectReason.UnknownReason, // Weird, but Web version won't represent all reasons
+
+                    };
+                }
+
+                ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected, lkDisconnectReason);
+            };
+        }
+
+        private async UniTaskVoid PollStateAsync()
+        {
+            LKConnectionState lastState = roomInfo.ConnectionState;
+            while (disposed == false)
+            {
+                await UniTask.Delay(POLL_DELAY);
+                LKConnectionState newState = roomInfo.ConnectionState;
+                if (lastState != newState)
+                {
+                    ConnectionStateChanged?.Invoke(newState);
+                    lastState = newState;
+                }
+            }
+        }
+
+        public void UpdateLocalMetadata(string metadata)
+        {
+            jsRoom.LocalParticipant?.SetMetadata(metadata);
+        }
+
+        public void SetLocalName(string name)
+        {
+            jsRoom.LocalParticipant?.SetName(name);
+        }
+
+        public async UniTask<Result> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe)
+        {
+            try
+            {
+                RoomConnectOptions options = new RoomConnectOptions();
+                options.AutoSubscribe = autoSubscribe;
+                LiveKit.ConnectOperation operation = jsRoom.Connect(url, authToken, options);
+                await operation;
+
+                if (operation.IsError)
+                {
+                    global::LiveKit.JSError error = operation.Error;
+                    return Result.ErrorResult($"Cannot connect to room {url} due an js error: {error.Name} - {error.Message}");
+                }
+
+                ConnectionUpdated?.Invoke(this, ConnectionUpdate.Connected, null);
+                return Result.SuccessResult();
+            }
+            catch (Exception e)
+            {
+                return Result.ErrorResult($"Cannot connect to room {url} due an exception: {e}");
+            }
+        }
+
+        public async UniTask DisconnectAsync(CancellationToken cancellationToken)
+        {
+            jsRoom.Disconnect();
+        }
+
+#endif
+
+    
     }
 
     internal static class Extensions

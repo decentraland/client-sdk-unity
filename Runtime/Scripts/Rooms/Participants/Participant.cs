@@ -5,17 +5,21 @@ using LiveKit.Internal;
 using LiveKit.Proto;
 using System.Threading;
 using Google.Protobuf.Collections;
-using LiveKit.Internal.FFIClients.Requests;
-using LiveKit.Rooms.AsyncInstractions;
-using LiveKit.Rooms.TrackPublications;
 using LiveKit.Rooms.Tracks;
 using UnityEngine;
+using DCL.LiveKit.Public;
+
+#if !UNITY_WEBGL
+using LiveKit.Rooms.AsyncInstractions;
+using LiveKit.Rooms.TrackPublications;
+#endif
 
 namespace LiveKit.Rooms.Participants
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Local")]
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    public class Participant
+#if !UNITY_WEBGL
+    public class LKParticipant
     {
         public delegate void PublishDelegate(TrackPublication publication);
 
@@ -146,4 +150,63 @@ namespace LiveKit.Rooms.Participants
             Utils.Debug("UnpublishTrack Response:: " + res);
         }
     }
+#else
+    // IEquatable to keep the behaviour consistent in dictionaries for the struct type.
+    public readonly struct LKParticipant : IEquatable<LKParticipant>
+    {
+        // Cannot guarantee participant to be presented in struct because the default init is possble
+        private readonly LiveKit.Participant? jsParticipant;
+        private readonly IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
+
+        // TODO Need to solve the conflict: Props must be none null, but mock props would be not valid too.
+        // Underlying implementation is not null safety.
+        public string Sid => jsParticipant?.Sid ?? string.Empty;
+        public string Identity => jsParticipant?.Identity ?? string.Empty;
+        public string Name => jsParticipant?.Name ?? string.Empty;
+        public string Metadata => jsParticipant?.Metadata ?? string.Empty;
+
+        // Official JS api misses the Quality property in Participant.
+        // It needs to be preserved to read on request.
+        public LKConnectionQuality ConnectionQuality
+        {
+            get
+            {
+                if (jsParticipant?.Sid != null && jsParticipant?.Identity != null)
+                    if (qualityMap.TryGetValue((Sid, Identity), out LKConnectionQuality quality))
+                    {
+                        return quality;
+                    }
+
+                // By default quality is poor
+                return LKConnectionQuality.QualityPoor;
+            }
+        }
+
+        internal LKParticipant(
+                LiveKit.Participant jsParticipant,
+                IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap
+                )
+        {
+            UnityEngine.Assertions.Assert.IsNotNull(jsParticipant, "jsParticipant must not be null");
+
+            this.jsParticipant = jsParticipant;
+            this.qualityMap = qualityMap;
+        }
+
+        public bool Equals(LKParticipant other)
+            => string.Equals(Sid, other.Sid, StringComparison.Ordinal);
+
+        public override bool Equals(object obj)
+            => obj is LKParticipant other && Equals(other);
+
+        public override int GetHashCode()
+            => Sid != null ? Sid.GetHashCode() : 0;
+
+        public static bool operator ==(LKParticipant a, LKParticipant b)
+            => a.Equals(b);
+
+        public static bool operator !=(LKParticipant a, LKParticipant b)
+            => !a.Equals(b);
+    }
+#endif
 }
