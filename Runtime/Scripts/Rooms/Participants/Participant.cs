@@ -154,15 +154,16 @@ namespace LiveKit.Rooms.Participants
     // IEquatable to keep the behaviour consistent in dictionaries for the struct type.
     public readonly struct LKParticipant : IEquatable<LKParticipant>
     {
-        private readonly LiveKit.Participant jsParticipant;
+        // Cannot guarantee participant to be presented in struct because the default init is possble
+        private readonly LiveKit.Participant? jsParticipant;
         private readonly IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
 
         // TODO Need to solve the conflict: Props must be none null, but mock props would be not valid too.
         // Underlying implementation is not null safety.
-        public string Sid => jsParticipant.Sid;
-        public string Identity => jsParticipant.Identity;
-        public string Name => jsParticipant.Name;
-        public string Metadata => jsParticipant.Metadata;
+        public string Sid => jsParticipant?.Sid ?? string.Empty;
+        public string Identity => jsParticipant?.Identity ?? string.Empty;
+        public string Name => jsParticipant?.Name ?? string.Empty;
+        public string Metadata => jsParticipant?.Metadata ?? string.Empty;
 
         // Official JS api misses the Quality property in Participant.
         // It needs to be preserved to read on request.
@@ -170,7 +171,7 @@ namespace LiveKit.Rooms.Participants
         {
             get
             {
-                if (jsParticipant.Sid != null && jsParticipant.Identity != null)
+                if (jsParticipant?.Sid != null && jsParticipant?.Identity != null)
                     if (qualityMap.TryGetValue((Sid, Identity), out LKConnectionQuality quality))
                     {
                         return quality;
@@ -186,6 +187,8 @@ namespace LiveKit.Rooms.Participants
                 IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap
                 )
         {
+            UnityEngine.Assertions.Assert.IsNotNull(jsParticipant, "jsParticipant must not be null");
+
             this.jsParticipant = jsParticipant;
             this.qualityMap = qualityMap;
         }
