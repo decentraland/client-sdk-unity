@@ -16,6 +16,7 @@ using LiveKit.Rooms.VideoStreaming;
 using RichTypes;
 using DCL.LiveKit.Public;
 using RoomInfo = LiveKit.Proto.RoomInfo;
+using System.Collections.Generic;
 
 #if !UNITY_WEBGL
 using LiveKit.Rooms.AsyncInstractions;
@@ -467,6 +468,8 @@ namespace LiveKit.Rooms
         private readonly JsParticipantsHub jsParticipantsHub;
         private readonly JsDataPipe jsDataPipe;
         
+        private readonly Dictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
+
         private bool disposed;
 
 
@@ -507,13 +510,15 @@ namespace LiveKit.Rooms
         public Room()
         {
             jsRoom = new JsRoom();
+            qualityMap = new Dictionary<(string sid, string identity), LKConnectionQuality>();
 
             // TODO (enhance) dispose to avoid the UniTask loop leakage (private ListenLoopAsync)?
             // From other side the current design suppose to reuse the room and won't dispose it
             roomInfo = JsRoomInfo.NewAndStart(jsRoom, newSid => RoomSidChanged?.Invoke(newSid));
             activeSpeakers = new NoActiveSpeakers(); // Not needed for this iteration
-            jsParticipantsHub = new JsParticipantsHub(jsRoom);
-            jsDataPipe = new JsDataPipe(jsRoom);
+            jsParticipantsHub = new JsParticipantsHub(jsRoom, qualityMap);
+            jsDataPipe = new JsDataPipe(jsRoom, qualityMap);
+
 
             disposed = false;
 
@@ -528,6 +533,12 @@ namespace LiveKit.Rooms
                 RoomMetadataChanged?.Invoke(metadata);
             };
 
+            // Keep the qualityMap warm
+            r.ConnectionQualityChanged += (ConnectionQuality quality, Participant participant) =>
+            {
+                qualityMap[(participant.Sid, participant.Identity)] = LKConnectionQualityUtils.FromJsQuality(quality);
+            };
+
             r.ConnectionQualityChanged += (LiveKit.ConnectionQuality quality, LiveKit.Participant participant) =>
             {
                 LKConnectionQuality q = quality switch
@@ -538,7 +549,7 @@ namespace LiveKit.Rooms
                     LiveKit.ConnectionQuality.Excellent => LKConnectionQuality.QualityExcellent,
                 };
 
-                LKParticipant wrap =  new LKParticipant(participant);
+                LKParticipant wrap =  new LKParticipant(participant, qualityMap);
                 ConnectionQualityChanged?.Invoke(q, wrap);
             };
 

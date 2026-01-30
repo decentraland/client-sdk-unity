@@ -151,21 +151,40 @@ namespace LiveKit.Rooms.Participants
         }
     }
 #else
-    // IEquatable to keep behaviour consistent in dictionaries.
+    // IEquatable to keep the behaviour consistent in dictionaries for the struct type.
     public readonly struct LKParticipant : IEquatable<LKParticipant>
     {
         private readonly LiveKit.Participant jsParticipant;
+        private readonly IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap;
 
         public string Sid => jsParticipant.Sid;
         public string Identity => jsParticipant.Identity;
         public string Name => jsParticipant.Name;
         public string Metadata => jsParticipant.Metadata;
 
-        public LKConnectionQuality ConnectionQuality => throw new System.NotImplementedException();
+        // Official JS api misses the Quality property in Participant.
+        // It needs to be preserved to read on request.
+        public LKConnectionQuality ConnectionQuality
+        {
+            get
+            {
+                if (qualityMap.TryGetValue((Sid, Identity), out LKConnectionQuality quality))
+                {
+                    return quality;
+                }
 
-        public LKParticipant(LiveKit.Participant jsParticipant)
+                // By default quality is poor
+                return LKConnectionQuality.QualityPoor;
+            }
+        }
+
+        internal LKParticipant(
+                LiveKit.Participant jsParticipant,
+                IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap
+                )
         {
             this.jsParticipant = jsParticipant;
+            this.qualityMap = qualityMap;
         }
 
         public bool Equals(LKParticipant other)
@@ -184,5 +203,4 @@ namespace LiveKit.Rooms.Participants
             => !a.Equals(b);
     }
 #endif
-
 }

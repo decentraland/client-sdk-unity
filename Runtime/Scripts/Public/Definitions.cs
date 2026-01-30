@@ -1,3 +1,6 @@
+using JsConnectionState = LiveKit.ConnectionState;
+using JsConnectionQuality = LiveKit.ConnectionQuality;
+
 namespace DCL.LiveKit.Public
 {
     public enum LKDataPacketKind
@@ -17,6 +20,20 @@ namespace DCL.LiveKit.Public
         ConnReconnecting = 2,
     }
 
+    internal static class LKConnectionStateUtils
+    {
+        public static LKConnectionState FromJsState(JsConnectionState state)
+        {
+            return state switch
+            {
+                JsConnectionState.Disconnected => LKConnectionState.ConnDisconnected,
+                JsConnectionState.Connecting => LKConnectionState.ConnDisconnected, // Yes, PROTO doesn't support the 'connecting' state, thus map it to disconnected, 'reconnected' state won't fit because it may have specific logic
+                JsConnectionState.Connected => LKConnectionState.ConnConnected,
+                JsConnectionState.Reconnecting => LKConnectionState.ConnReconnecting,
+            };
+        }
+    }
+
     public enum LKConnectionQuality {
         //[pbr::OriginalName("QUALITY_POOR")]
         QualityPoor = 0,
@@ -26,6 +43,20 @@ namespace DCL.LiveKit.Public
         QualityExcellent = 2,
         //[pbr::OriginalName("QUALITY_LOST")]
         QualityLost = 3,
+    }
+
+    internal static class LKConnectionQualityUtils
+    {
+        public static LKConnectionQuality FromJsQuality(JsConnectionQuality quality)
+        {
+            return quality switch
+            {
+                JsConnectionQuality.Unknown => LKConnectionQuality.QualityLost,
+                JsConnectionQuality.Poor => LKConnectionQuality.QualityPoor,
+                JsConnectionQuality.Good => LKConnectionQuality.QualityGood,
+                JsConnectionQuality.Excellent => LKConnectionQuality.QualityExcellent,
+            };
+        }
     }
 
     public enum LKDisconnectReason

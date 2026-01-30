@@ -20,7 +20,7 @@ namespace LiveKit.Rooms.Info
         // bool is okay, JS is single threaded
         private bool disposed;
 
-        public LKConnectionState ConnectionState => FromJsState(room.State);
+        public LKConnectionState ConnectionState => LKConnectionStateUtils.FromJsState(room.State);
         public string Sid { get; private set; }
         public string Name => room.Name;
         public string Metadata => room.Metadata;
@@ -59,7 +59,7 @@ namespace LiveKit.Rooms.Info
                     string lastSid = instance.Sid;
 
                     JSObject jsObject = promise.ResolveValue;
-                    // TODO more presice Sid retrieve
+                    // TODO more precise Sid retrieve
                     instance.Sid = jsObject.ToString(); // JSObject wierdly won't expose any properties;
 
                     if (lastSid != instance.Sid)
@@ -72,16 +72,6 @@ namespace LiveKit.Rooms.Info
             }
         }
 
-        private static LKConnectionState FromJsState(JsConnectionState state)
-        {
-            return state switch
-            {
-                JsConnectionState.Disconnected => LKConnectionState.ConnDisconnected,
-                JsConnectionState.Connecting => LKConnectionState.ConnDisconnected, // Yes, PROTO doesn't support the 'connecting' state, thus map it to disconnected, 'reconnected' state won't fit because it may have specific logic
-                JsConnectionState.Connected => LKConnectionState.ConnConnected,
-                JsConnectionState.Reconnecting => LKConnectionState.ConnReconnecting,
-            };
-        }
     }
 }
 

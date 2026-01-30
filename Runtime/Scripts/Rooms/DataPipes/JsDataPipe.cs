@@ -25,12 +25,15 @@ namespace LiveKit.Rooms.DataPipes
 
         public event ReceivedDataDelegate DataReceived;
 
-        public JsDataPipe(JsRoom room)
+        public JsDataPipe(
+                JsRoom room,
+                IReadOnlyDictionary<(string sid, string identity), LKConnectionQuality> qualityMap
+                )
         {
             this.room = room;
             room.DataReceived += (byte[] data, RemoteParticipant participant, DataPacketKind? kind) =>
             {
-                LKParticipant wrap = new LKParticipant(participant);
+                LKParticipant wrap = new LKParticipant(participant, qualityMap);
                 LKDataPacketKind packetKind = kind switch
                 {
                     DataPacketKind.LOSSY => LKDataPacketKind.KindLossy,
