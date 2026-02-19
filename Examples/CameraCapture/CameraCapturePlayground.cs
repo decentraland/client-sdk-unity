@@ -1,3 +1,5 @@
+#if !UNITY_WEBGL || UNITY_EDITOR
+
 using System;
 using LiveKit.RtcSources.Video;
 using RichTypes;
@@ -96,3 +98,5 @@ namespace Examples.CameraCapture
         }
     }
 }
+
+#endif
