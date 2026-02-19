@@ -1,4 +1,4 @@
-﻿#if !UNITY_WEBGL
+﻿#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Linq;
@@ -16,7 +16,7 @@ namespace LiveKit.Scripts.Audio
         private PlaybackMicrophoneAudioSource? lateBindPlaybackProxy;
         private bool disposed;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
         public MicrophoneInfo MicrophoneInfo => native.microphoneInfo;
 
         public bool IsRecording => native.IsRecording;
@@ -33,7 +33,7 @@ namespace LiveKit.Scripts.Audio
         public event IAudioFilter.OnAudioDelegate? AudioRead;
 
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
         private MicrophoneAudioFilter(RustAudioSource native)
         {
             this.native = native;
@@ -47,7 +47,7 @@ namespace LiveKit.Scripts.Audio
             if (disposed) return;
             disposed = true;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
             native.AudioRead -= NativeOnAudioRead;
             native.Dispose();
 #endif
@@ -60,7 +60,7 @@ namespace LiveKit.Scripts.Audio
             MicrophoneSelection? microphoneName = null,
             bool withPlayback = false)
         {
-#if UNITY_WEBGL
+#if UNITY_WEBGL && !UNITY_EDITOR
             return Result<MicrophoneAudioFilter>.ErrorResult(
                 $"MicrophoneAudioFilter is not supported on WEBGL");
 #else
@@ -100,7 +100,7 @@ namespace LiveKit.Scripts.Audio
 
         public static string[] AvailableDeviceNamesOrEmpty()
         {
-#if UNITY_WEBGL
+#if UNITY_WEBGL && !UNITY_EDITOR
             return Array.Empty<string>();
 #else
             var result = RustAudioClient.AvailableDeviceNames();
@@ -116,14 +116,14 @@ namespace LiveKit.Scripts.Audio
 
         public void StartCapture()
         {
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
             native.StartCapture();
 #endif
         }
 
         public void StopCapture()
         {
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
             native.PauseCapture();
 #endif
         }

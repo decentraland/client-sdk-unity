@@ -55,13 +55,13 @@ namespace LiveKit.Rooms.Participants
 
         public void Clear()
         {
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
             local?.Clear();
 #endif
 
             local = null;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
             foreach (var participant in remoteParticipants.Values)
             {
                 participant.Clear();

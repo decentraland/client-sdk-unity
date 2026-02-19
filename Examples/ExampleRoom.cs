@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Collections.Generic;
@@ -286,7 +286,7 @@ public class ExampleRoom : MonoBehaviour
         }
 
         int index = publishedVideoTracks.Count - 1;
-        (ITrack track, RtcVideoSource videoSource) last = publishedVideoTracks[index];
+        (LiveKit.Rooms.Tracks.ITrack track, RtcVideoSource videoSource) last = publishedVideoTracks[index];
         publishedVideoTracks.RemoveAt(index);
         m_Room?.Participants.LocalParticipant().UnpublishTrack(last.track, stopOnUnpublish: true);
         Debug.Log($"Unpublished video track, current count: {publishedVideoTracks.Count}");

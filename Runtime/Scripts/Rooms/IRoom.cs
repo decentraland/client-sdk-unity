@@ -9,7 +9,7 @@ using LiveKit.Rooms.Tracks.Hub;
 using LiveKit.Rooms.VideoStreaming;
 using RichTypes;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 using LiveKit.Rooms.Streaming.Audio;
 #endif
 
@@ -22,7 +22,7 @@ namespace LiveKit.Rooms
         event Room.SidDelegate? RoomSidChanged;
  
         // Tracks and streams are not supported currently in WebGL
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
         ILocalTracks LocalTracks { get; }
 
         IVideoStreams VideoStreams { get; }

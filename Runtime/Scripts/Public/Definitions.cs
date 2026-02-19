@@ -11,6 +11,27 @@ namespace DCL.LiveKit.Public
         KindReliable = 1,
     }
 
+    internal static class LKDataPacketKindUtils
+    {
+        public static global::LiveKit.Proto.DataPacketKind ToProto(LKDataPacketKind kind)
+        {
+            return kind switch
+            {
+                LKDataPacketKind.KindLossy => global::LiveKit.Proto.DataPacketKind.KindLossy,
+                LKDataPacketKind.KindReliable => global::LiveKit.Proto.DataPacketKind.KindReliable,
+            };
+        }
+
+        public static LKDataPacketKind FromProto(global::LiveKit.Proto.DataPacketKind kind)
+        {
+            return kind switch
+            {
+                global::LiveKit.Proto.DataPacketKind.KindLossy => LKDataPacketKind.KindLossy,
+                global::LiveKit.Proto.DataPacketKind.KindReliable => LKDataPacketKind.KindReliable,
+            };
+        }
+    }
+
     public enum LKConnectionState {
         //[pbr::OriginalName("CONN_DISCONNECTED")]
         ConnDisconnected = 0,
@@ -30,6 +51,16 @@ namespace DCL.LiveKit.Public
                 JsConnectionState.Connecting => LKConnectionState.ConnDisconnected, // Yes, PROTO doesn't support the 'connecting' state, thus map it to disconnected, 'reconnected' state won't fit because it may have specific logic
                 JsConnectionState.Connected => LKConnectionState.ConnConnected,
                 JsConnectionState.Reconnecting => LKConnectionState.ConnReconnecting,
+            };
+        }
+
+        public static LKConnectionState FromProtoState(global::LiveKit.Proto.ConnectionState state)
+        {
+            return state switch
+            {
+                global::LiveKit.Proto.ConnectionState.ConnDisconnected => LKConnectionState.ConnDisconnected,
+                global::LiveKit.Proto.ConnectionState.ConnConnected => LKConnectionState.ConnConnected,
+                global::LiveKit.Proto.ConnectionState.ConnReconnecting => LKConnectionState.ConnReconnecting
             };
         }
     }
@@ -55,6 +86,17 @@ namespace DCL.LiveKit.Public
                 JsConnectionQuality.Poor => LKConnectionQuality.QualityPoor,
                 JsConnectionQuality.Good => LKConnectionQuality.QualityGood,
                 JsConnectionQuality.Excellent => LKConnectionQuality.QualityExcellent,
+            };
+        }
+        
+        public static LKConnectionQuality FromProtoQuality(global::LiveKit.Proto.ConnectionQuality quality)
+        {
+            return quality switch
+            {
+                global::LiveKit.Proto.ConnectionQuality.QualityLost => LKConnectionQuality.QualityLost,
+                global::LiveKit.Proto.ConnectionQuality.QualityPoor => LKConnectionQuality.QualityPoor,
+                global::LiveKit.Proto.ConnectionQuality.QualityGood => LKConnectionQuality.QualityGood,
+                global::LiveKit.Proto.ConnectionQuality.QualityExcellent => LKConnectionQuality.QualityExcellent,
             };
         }
     }

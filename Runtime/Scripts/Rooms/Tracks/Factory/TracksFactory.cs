@@ -1,10 +1,11 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using LiveKit.Internal;
 using LiveKit.Proto;
 using LiveKit.Rooms.Participants;
 using LiveKit.RtcSources.Video;
 using UnityEngine.Pool;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit.Rooms.Tracks.Factory
 {
@@ -23,7 +24,7 @@ namespace LiveKit.Rooms.Tracks.Factory
 
         public ITrack NewAudioTrack(string name, IRtcAudioSource source, IRoom room)
         {
-            using var request = FFIBridge.Instance.NewRequest<CreateAudioTrackRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<CreateAudioTrackRequest>();
             var createTrack = request.request;
             createTrack.Name = name;
             createTrack.SourceHandle = (ulong)source.BorrowHandle().DangerousGetHandle();
@@ -34,7 +35,7 @@ namespace LiveKit.Rooms.Tracks.Factory
         public ITrack NewVideoTrack(string name, RtcVideoSource source, IRoom room)
         {
             using FfiRequestWrap<CreateVideoTrackRequest>
-                request = FFIBridge.Instance.NewRequest<CreateVideoTrackRequest>();
+                request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<CreateVideoTrackRequest>();
             var createTrack = request.request;
             createTrack.Name = name;
             createTrack.SourceHandle = source.HandleId;
@@ -42,7 +43,7 @@ namespace LiveKit.Rooms.Tracks.Factory
             return CreateTrack(response, room, false);
         }
 
-        public ITrack NewTrack(FfiHandle? handle, TrackInfo info, Room room, Participant participant)
+        public ITrack NewTrack(FfiHandle? handle, TrackInfo info, Room room, LKParticipant participant)
         {
             var track = trackPool.Get()!;
             track.Construct(handle, info, room, participant);

@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Threading;
@@ -10,6 +10,7 @@ using LiveKit.client_sdk_unity.Runtime.Scripts.Internal.FFIClients;
 using LiveKit.Internal.FFIClients;
 using RichTypes;
 using Unity.Collections;
+using LiveKit.Internal.FFIClients.Requests;
 
 namespace LiveKit.RtcSources.Video
 {
@@ -68,7 +69,7 @@ namespace LiveKit.RtcSources.Video
         public RtcVideoSource(IVideoInput videoInput)
         {
             this.videoInput = videoInput;
-            using FfiRequestWrap<NewVideoSourceRequest> request = FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
+            using FfiRequestWrap<NewVideoSourceRequest> request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<NewVideoSourceRequest>();
             NewVideoSourceRequest newVideoSource = request.request;
             newVideoSource.Type = VideoSourceType.VideoSourceNative;
             using FfiResponseWrap response = request.Send();
@@ -111,7 +112,7 @@ namespace LiveKit.RtcSources.Video
                         await UniTask.SwitchToMainThread();
                     }
                     else
-                        Utils.Error($"Error during reading video input frame: {result.ErrorMessage}");
+                        LiveKit.Internal.Utils.Error($"Error during reading video input frame: {result.ErrorMessage}");
                 }
                 else
                 {
@@ -135,7 +136,7 @@ namespace LiveKit.RtcSources.Video
         private void ProcessFrame(VideoInputFrame frame)
         {
             using FfiRequestWrap<CaptureVideoFrameRequest> requestWrap =
-                FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
+                LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<CaptureVideoFrameRequest>();
 
             using SmartWrap<VideoBufferInfo> bufferWrap =
                 requestWrap.TempResource<VideoBufferInfo>();

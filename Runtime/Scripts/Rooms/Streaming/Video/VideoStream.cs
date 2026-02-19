@@ -8,7 +8,7 @@ using UnityEngine;
 namespace LiveKit.Rooms.VideoStreaming
 {
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
     public class VideoStream : IVideoStream
     {
         private static readonly ProfilerMarker marker = new("LiveKit.VideoStream.DecodeLastFrame");

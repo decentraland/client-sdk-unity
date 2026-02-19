@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Collections.Generic;
@@ -46,10 +46,10 @@ namespace LiveKit.Rooms.DataPipes
             dataRequest.DestinationIdentities.AddRange(identities);
             dataRequest.DataLen = (ulong)len;
             dataRequest.DataPtr = (ulong)data;
-            dataRequest.Reliable = kind == DataPacketKind.KindReliable;
+            dataRequest.Reliable = LKDataPacketKindUtils.ToProto(kind) == global::LiveKit.Proto.DataPacketKind.KindReliable;
             dataRequest.Topic = topic;
             dataRequest.LocalParticipantHandle = (ulong)participantsHub.LocalParticipant().Handle.DangerousGetHandle();
-            Utils.Debug("Sending message: " + topic);
+            LiveKit.Internal.Utils.Debug("Sending message: " + topic);
             using var response = request.Send();
         }
 
@@ -58,7 +58,7 @@ namespace LiveKit.Rooms.DataPipes
             participantsHub = participants;
         }
 
-        public void Notify(ReadOnlySpan<byte> data, Participant participant, string topic, LKDataPacketKind kind)
+        public void Notify(ReadOnlySpan<byte> data, LKParticipant participant, string topic, LKDataPacketKind kind)
         {
             DataReceived?.Invoke(data, participant, topic, kind);
         }

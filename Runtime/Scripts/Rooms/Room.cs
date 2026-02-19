@@ -18,17 +18,16 @@ using DCL.LiveKit.Public;
 using RoomInfo = LiveKit.Proto.RoomInfo;
 using System.Collections.Generic;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 using LiveKit.Rooms.AsyncInstractions;
 using LiveKit.Rooms.Participants.Factory;
 using LiveKit.Rooms.Tracks.Factory;
 using LiveKit.Rooms.Streaming.Audio;
 using LiveKit.Rooms.TrackPublications;
+using LiveKit.Internal.FFIClients.Requests;
 #endif
 
-using Utils = LiveKit.Internal.Utils;
-
-#if UNITY_WEBGL
+#if UNITY_WEBGL && !UNITY_EDITOR
 using JsRoom = LiveKit.Room;
 #endif
 
@@ -45,7 +44,7 @@ namespace LiveKit.Rooms
 #endregion
 
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
         private readonly IMemoryPool memoryPool;
         private readonly IMutableActiveSpeakers activeSpeakers;
         private readonly IMutableParticipantsHub participantsHub;
@@ -142,7 +141,7 @@ namespace LiveKit.Rooms
 
         public void UpdateLocalMetadata(string metadata)
         {
-            using var request = FFIBridge.Instance.NewRequest<SetLocalMetadataRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<SetLocalMetadataRequest>();
 
             var localParticipant = participantsHub.LocalParticipant();
 
@@ -156,7 +155,7 @@ namespace LiveKit.Rooms
 
         public void SetLocalName(string name)
         {
-            using var request = FFIBridge.Instance.NewRequest<SetLocalNameRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<SetLocalNameRequest>();
 
             var localParticipant = participantsHub.LocalParticipant();
 
@@ -170,7 +169,7 @@ namespace LiveKit.Rooms
 
         public async UniTask<Result> ConnectAsync(string url, string authToken, CancellationToken cancelToken, bool autoSubscribe)
         {
-            using var response = FFIBridge.Instance.SendConnectRequest(url, authToken, autoSubscribe);
+            using var response = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.SendConnectRequest(url, authToken, autoSubscribe);
             FfiResponse res = response;
             return await new ConnectInstruction(res.Connect!.AsyncId, this, cancelToken)
                 .AwaitWithSuccess();
@@ -183,7 +182,7 @@ namespace LiveKit.Rooms
                 return;
             }
 
-            using var response = FFIBridge.Instance.SendDisconnectRequest(handle);
+            using var response = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.SendDisconnectRequest(handle);
             FfiResponse res = response;
             videoStreams.Free();
             audioStreams.Free();
@@ -198,11 +197,11 @@ namespace LiveKit.Rooms
         {
             if (e.RoomHandle != handleId)
             {
-                Utils.Debug("Ignoring. Different Room... " + e);
+                LiveKit.Internal.Utils.Debug("Ignoring. Different Room... " + e);
                 return;
             }
 
-            Utils.Debug(
+            LiveKit.Internal.Utils.Debug(
                 $"Room {Info.Name} Event Type: {e.MessageCase}   ---> ({e.RoomHandle} <=> {handleId})");
             switch (e.MessageCase)
             {
@@ -266,7 +265,7 @@ namespace LiveKit.Rooms
                     }
                     else
                     {
-                        Utils.Debug(
+                        LiveKit.Internal.Utils.Debug(
                             "Unable to find local track after unpublish: " + e.LocalTrackUnpublished!.PublicationSid);
                     }
                 }
@@ -349,8 +348,9 @@ namespace LiveKit.Rooms
                 {
                     var participant = this.ParticipantEnsured(e.ConnectionQualityChanged!.ParticipantIdentity!);
                     var quality = e.ConnectionQualityChanged.Quality;
-                    participant.UpdateQuality(quality);
-                    ConnectionQualityChanged?.Invoke(quality, participant);
+                    var q = LKConnectionQualityUtils.FromProtoQuality(quality);
+                    participant.UpdateQuality(q);
+                    ConnectionQualityChanged?.Invoke(q, participant);
                 }
                     break;
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.DataPacketReceived:
@@ -362,22 +362,28 @@ namespace LiveKit.Rooms
                         var dataInfo = dataReceivedPacket.User!.Data!;
                         using var memory = dataInfo.ReadAndDispose(memoryPool);
                         var participant = this.ParticipantEnsured(dataReceivedPacket.ParticipantIdentity!);
-                        dataPipe.Notify(memory.Span(), participant, e.DataPacketReceived.User.Topic,
-                            e.DataPacketReceived.Kind);
+                        var k = LKDataPacketKindUtils.FromProto(e.DataPacketReceived.Kind);
+                        dataPipe.Notify(
+                                memory.Span(),
+                                participant,
+                                e.DataPacketReceived.User.Topic,
+                                k);
                     }
                 }
                     break;
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.ConnectionStateChanged:
-                    roomInfo.UpdateConnectionState(e.ConnectionStateChanged!.State);
-                    ConnectionStateChanged?.Invoke(e.ConnectionStateChanged!.State);
+                    LKConnectionState state = LKConnectionStateUtils.FromProtoState(e.ConnectionStateChanged!.State);
+                    roomInfo.UpdateConnectionState(state);
+                    ConnectionStateChanged?.Invoke(state);
                     break;
                 /*case LiveKit.Proto.RoomEvent.MessageOneofCase.Connected:
                     Connected?.Invoke(this);
                     break;*/
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.Eos:
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.Disconnected:
-                    var disconnectReason = e.Disconnected?.Reason ?? DisconnectReason.UnknownReason;
-                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected, disconnectReason);
+                    var disconnectReason = e.Disconnected?.Reason ?? LiveKit.Proto.DisconnectReason.UnknownReason;
+                    LKDisconnectReason lkds = (LKDisconnectReason) disconnectReason; // TODO tricky, but should work as long as versions stay the same
+                    ConnectionUpdated?.Invoke(this, ConnectionUpdate.Disconnected, lkds);
                     break;
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.Reconnecting:
                     ConnectionUpdated?.Invoke(this, ConnectionUpdate.Reconnecting);

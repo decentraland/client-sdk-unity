@@ -1,4 +1,4 @@
-﻿#if !UNITY_WEBGL
+﻿#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Threading;
@@ -88,7 +88,7 @@ namespace LiveKit.Audio
         {
             if (handleBorrowed)
             {
-                Utils.Error("Borrowing already borrowed handle, may cause undefined behaviour");
+                LiveKit.Internal.Utils.Error("Borrowing already borrowed handle, may cause undefined behaviour");
             }
 
             handleBorrowed = true;
@@ -116,7 +116,7 @@ namespace LiveKit.Audio
             Stop();
             if (audioFilter.IsValid == false)
             {
-                Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
+                LiveKit.Internal.Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
@@ -191,7 +191,7 @@ namespace LiveKit.Audio
             }
             catch (Exception e)
             {
-                Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
+                LiveKit.Internal.Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
             }
         }
 
@@ -199,7 +199,7 @@ namespace LiveKit.Audio
         {
             if (disposed)
             {
-                Utils.Error($"{nameof(AudioClipRtcAudioSource)} is already disposed");
+                LiveKit.Internal.Utils.Error($"{nameof(AudioClipRtcAudioSource)} is already disposed");
                 return;
             }
 

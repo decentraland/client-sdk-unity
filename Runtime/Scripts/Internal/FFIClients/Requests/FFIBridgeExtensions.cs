@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using LiveKit.Proto;
 using LiveKit.Rooms;
@@ -7,11 +7,11 @@ namespace LiveKit.Internal.FFIClients.Requests
 {
     public static class FFIBridgeExtensions
     {
-        public static FfiResponseWrap SendConnectRequest(this IFFIBridge ffiBridge, string url, string authToken, bool autoSubscribe)
+        public static FfiResponseWrap SendConnectRequest(this LiveKit.Internal.FFIClients.Requests.IFFIBridge ffiBridge, string url, string authToken, bool autoSubscribe)
         {
             Utils.Debug("Connect....");
             using var request = ffiBridge.NewRequest<ConnectRequest>();
-            using var roomOptions = request.TempResource<RoomOptions>();
+            using var roomOptions = request.TempResource<LiveKit.Proto.RoomOptions>();
             var connect = request.request;
             connect.Url = url;
             connect.Token = authToken;
@@ -22,7 +22,7 @@ namespace LiveKit.Internal.FFIClients.Requests
             return response;
         }
         
-        public static FfiResponseWrap SendDisconnectRequest(this IFFIBridge ffiBridge, FfiHandle roomHandle)
+        public static FfiResponseWrap SendDisconnectRequest(this LiveKit.Internal.FFIClients.Requests.IFFIBridge ffiBridge, FfiHandle roomHandle)
         {
             using var request = ffiBridge.NewRequest<DisconnectRequest>();
             var disconnect = request.request;

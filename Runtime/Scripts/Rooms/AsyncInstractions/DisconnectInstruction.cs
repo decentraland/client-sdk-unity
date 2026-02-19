@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System.Threading;
 using LiveKit.Internal;
@@ -20,7 +20,7 @@ namespace LiveKit.Rooms.AsyncInstractions
 
         private void OnDisconnect(DisconnectCallback e)
         {
-            Utils.Debug($"OnConnect.... {e}");
+            LiveKit.Internal.Utils.Debug($"OnConnect.... {e}");
             if (asyncId != e.AsyncId)
                 return;
 

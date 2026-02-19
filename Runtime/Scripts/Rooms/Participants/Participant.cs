@@ -9,7 +9,7 @@ using LiveKit.Rooms.Tracks;
 using UnityEngine;
 using DCL.LiveKit.Public;
 
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 using LiveKit.Rooms.AsyncInstractions;
 using LiveKit.Rooms.TrackPublications;
 #endif
@@ -18,10 +18,10 @@ namespace LiveKit.Rooms.Participants
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Local")]
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
     public class LKParticipant
     {
-        public delegate void PublishDelegate(TrackPublication publication);
+        public delegate void PublishDelegate(LiveKit.Rooms.TrackPublications.TrackPublication publication);
 
         public Origin Origin { get; private set; }
 
@@ -34,19 +34,19 @@ namespace LiveKit.Rooms.Participants
         public bool Speaking { get; private set; }
         public float AudioLevel { get; private set; }
 
-        public ConnectionQuality ConnectionQuality { get; private set; }
+        public LKConnectionQuality ConnectionQuality { get; private set; }
 
         public event PublishDelegate? TrackPublished;
 
         public event PublishDelegate? TrackUnpublished;
 
-        public IReadOnlyDictionary<string, TrackPublication> Tracks => tracks;
+        public IReadOnlyDictionary<string, LiveKit.Rooms.TrackPublications.TrackPublication> Tracks => tracks;
 
         internal FfiHandle Handle { get; private set; } = null!;
 
         public Room Room { get; private set; } = null!;
 
-        private readonly Dictionary<string, TrackPublication> tracks = new();
+        private readonly Dictionary<string, LiveKit.Rooms.TrackPublications.TrackPublication> tracks = new();
 
         private ParticipantInfo info = null!;
 
@@ -66,13 +66,13 @@ namespace LiveKit.Rooms.Participants
             tracks.Clear();
         }
 
-        public void Publish(TrackPublication track)
+        public void Publish(LiveKit.Rooms.TrackPublications.TrackPublication track)
         {
             AddTrack(track);
             TrackPublished?.Invoke(track);
         }
 
-        public void UnPublish(string sid, out TrackPublication unpublishedTrack)
+        public void UnPublish(string sid, out LiveKit.Rooms.TrackPublications.TrackPublication unpublishedTrack)
         {
             var publication = tracks[sid] ?? throw new Exception("Track not found");
             tracks.Remove(sid);
@@ -80,12 +80,12 @@ namespace LiveKit.Rooms.Participants
             unpublishedTrack = publication;
         }
 
-        public TrackPublication TrackPublication(string sid)
+        public LiveKit.Rooms.TrackPublications.TrackPublication TrackPublication(string sid)
         {
             return tracks[sid] ?? throw new Exception("Track publication not found");
         }
 
-        public void AddTrack(TrackPublication track)
+        public void AddTrack(LiveKit.Rooms.TrackPublications.TrackPublication track)
         {
             tracks.Add(track.Sid, track);
         }
@@ -100,7 +100,7 @@ namespace LiveKit.Rooms.Participants
             info.Name = name;
         }
 
-        public void UpdateQuality(ConnectionQuality connectionQuality)
+        public void UpdateQuality(LKConnectionQuality connectionQuality)
         {
             ConnectionQuality = connectionQuality;
         }
@@ -116,14 +116,14 @@ namespace LiveKit.Rooms.Participants
         }
 
         public PublishTrackInstruction PublishTrack(
-            ITrack localTrack,
-            TrackPublishOptions options,
+            LiveKit.Rooms.Tracks.ITrack localTrack,
+            LiveKit.Proto.TrackPublishOptions options,
             CancellationToken token)
         {
             if (Origin is not Origin.Local)
                 throw new InvalidOperationException("Can publish track for the local participant only");
 
-            using var request = FFIBridge.Instance.NewRequest<PublishTrackRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<PublishTrackRequest>();
             var publish = request.request;
             publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
             publish.TrackHandle = (ulong)localTrack.Handle.DangerousGetHandle();
@@ -134,20 +134,20 @@ namespace LiveKit.Rooms.Participants
         }
 
         public void UnpublishTrack(
-            ITrack localTrack,
+            LiveKit.Rooms.Tracks.ITrack localTrack,
             bool stopOnUnpublish)
         {
             if (Origin is not Origin.Local)
                 throw new InvalidOperationException("Can unpublish track for the local participant only");
 
-            using var request = FFIBridge.Instance.NewRequest<UnpublishTrackRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<UnpublishTrackRequest>();
             var publish = request.request;
             publish.LocalParticipantHandle = (ulong)Handle.DangerousGetHandle();
             publish.TrackSid = localTrack.Sid;
             publish.StopOnUnpublish = stopOnUnpublish;
             using var response = request.Send();
             FfiResponse res = response;
-            Utils.Debug("UnpublishTrack Response:: " + res);
+            LiveKit.Internal.Utils.Debug("UnpublishTrack Response:: " + res);
         }
     }
 #else

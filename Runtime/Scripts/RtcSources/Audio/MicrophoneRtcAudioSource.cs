@@ -1,4 +1,4 @@
-﻿#if !UNITY_WEBGL
+﻿#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using System.Threading;
@@ -15,7 +15,6 @@ using UnityEngine;
 using UnityEngine.Audio;
 using RustAudio;
 using LiveKit.Scripts.Audio;
-
 
 namespace LiveKit.Audio
 {
@@ -142,7 +141,7 @@ namespace LiveKit.Audio
         {
             if (handleBorrowed)
             {
-                Utils.Error("Borrowing already borrowed handle, may cause undefined behaviour");
+                LiveKit.Internal.Utils.Error("Borrowing already borrowed handle, may cause undefined behaviour");
             }
 
             handleBorrowed = true;
@@ -170,7 +169,7 @@ namespace LiveKit.Audio
             Stop();
             if (deviceMicrophoneAudioSource.IsValid == false)
             {
-                Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
+                LiveKit.Internal.Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
@@ -257,13 +256,13 @@ namespace LiveKit.Audio
                 );
                 if (error != null)
                 {
-                    Utils.Error($"Error during creation ApmFrame: {error}");
+                    LiveKit.Internal.Utils.Error($"Error during creation ApmFrame: {error}");
                     break;
                 }
 
                 var apmResult = apm.ProcessStream(apmFrame);
                 if (apmResult.Success == false)
-                    Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
+                    LiveKit.Internal.Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
 
                 ProcessAudioFrame(frame);
             }
@@ -293,7 +292,7 @@ namespace LiveKit.Audio
             }
             catch (Exception e)
             {
-                Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
+                LiveKit.Internal.Utils.Error("Audio Framedata error: " + e.Message + "\nStackTrace: " + e.StackTrace);
             }
         }
 
@@ -301,7 +300,7 @@ namespace LiveKit.Audio
         {
             if (disposed)
             {
-                Utils.Error($"{nameof(MicrophoneRtcAudioSource)} is already disposed");
+                LiveKit.Internal.Utils.Error($"{nameof(MicrophoneRtcAudioSource)} is already disposed");
                 return;
             }
 

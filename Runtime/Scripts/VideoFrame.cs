@@ -1,4 +1,4 @@
-#if !UNITY_WEBGL
+#if !UNITY_WEBGL || UNITY_EDITOR
 
 using System;
 using LiveKit.Internal;
@@ -83,7 +83,7 @@ namespace LiveKit
 
         public static VideoFrame Convert(OwnedVideoBuffer ownedInfo, VideoBufferType type)
         {
-            using var request = FFIBridge.Instance.NewRequest<VideoConvertRequest>();
+            using var request = LiveKit.Internal.FFIClients.Requests.FFIBridge.Instance.NewRequest<VideoConvertRequest>();
             var alloc = request.request;
             alloc.FlipY = GetFlip();
             alloc.DstType = type;
