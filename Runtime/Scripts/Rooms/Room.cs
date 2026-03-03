@@ -171,11 +171,12 @@ namespace LiveKit.Rooms
                 return;
             }
 
+            var instruction = new DisconnectInstruction(this, cancellationToken);
             using var response = FFIBridge.Instance.SendDisconnectRequest(handle);
             FfiResponse res = response;
+            instruction.SetAsyncId(res.Disconnect!.AsyncId);
             videoStreams.Free();
             audioStreams.Free();
-            var instruction = new DisconnectInstruction(res.Disconnect!.AsyncId, this, cancellationToken);
             await instruction.AwaitWithSuccess();
             ffiHandleFactory.Release(handle);
             handle = null;
