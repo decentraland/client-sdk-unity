@@ -40,7 +40,7 @@ namespace LiveKit.Rooms
 
         public delegate void SidDelegate(string sid);
 
-        public delegate void RemoteParticipantDelegate(Participant participant);
+        public delegate void RemoteParticipantDelegate(LKParticipant participant);
 #endregion
 
 

@@ -1,5 +1,7 @@
+#if UNITY_WEBGL
 using JsConnectionState = LiveKit.ConnectionState;
 using JsConnectionQuality = LiveKit.ConnectionQuality;
+#endif
 
 namespace DCL.LiveKit.Public
 {
@@ -43,6 +45,7 @@ namespace DCL.LiveKit.Public
 
     internal static class LKConnectionStateUtils
     {
+#if UNITY_WEBGL
         public static LKConnectionState FromJsState(JsConnectionState state)
         {
             return state switch
@@ -53,6 +56,7 @@ namespace DCL.LiveKit.Public
                 JsConnectionState.Reconnecting => LKConnectionState.ConnReconnecting,
             };
         }
+#endif
 
         public static LKConnectionState FromProtoState(global::LiveKit.Proto.ConnectionState state)
         {
@@ -78,6 +82,7 @@ namespace DCL.LiveKit.Public
 
     internal static class LKConnectionQualityUtils
     {
+#if UNITY_WEBGL
         public static LKConnectionQuality FromJsQuality(JsConnectionQuality quality)
         {
             return quality switch
@@ -88,6 +93,7 @@ namespace DCL.LiveKit.Public
                 JsConnectionQuality.Excellent => LKConnectionQuality.QualityExcellent,
             };
         }
+#endif
         
         public static LKConnectionQuality FromProtoQuality(global::LiveKit.Proto.ConnectionQuality quality)
         {
