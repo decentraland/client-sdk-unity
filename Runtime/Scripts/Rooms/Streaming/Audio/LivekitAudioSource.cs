@@ -14,7 +14,6 @@ namespace LiveKit.Rooms.Streaming.Audio
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
         private bool monoMode;
-        private float[] monoBuffer = Array.Empty<float>();
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -134,26 +133,19 @@ namespace LiveKit.Rooms.Streaming.Audio
             Option<AudioStream> resource = stream.Resource;
             if (resource.Has)
             {
+                resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+
                 if (monoMode && channels >= 2)
                 {
                     int samplesPerChannel = data.Length / channels;
 
-                    if (monoBuffer.Length != samplesPerChannel)
-                        monoBuffer = new float[samplesPerChannel];
-
-                    resource.Value.ReadAudio(monoBuffer.AsSpan(), 1, sampleRate);
-
                     for (int i = 0; i < samplesPerChannel; i++)
                     {
-                        float sample = monoBuffer[i];
+                        float sample = data[i * channels];
 
                         for (int ch = 0; ch < channels; ch++)
                             data[i * channels + ch] = sample;
                     }
-                }
-                else
-                {
-                    resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
                 }
 
                 if (wavWriter.HasValue)
