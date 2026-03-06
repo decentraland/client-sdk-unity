@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using LiveKit.Audio;
 using LiveKit.Internal;
 using RichTypes;
@@ -13,18 +13,21 @@ namespace LiveKit.Rooms.Streaming.Audio
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
+        private bool monoMode;
+        private float[] monoBuffer = Array.Empty<float>();
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
         public bool IsWavActive => wavWriter.HasValue;
 
-        public static LivekitAudioSource New(bool explicitName = false)
+        public static LivekitAudioSource New(bool explicitName = false, bool mono = false)
         {
             var gm = new GameObject();
             var audioSource = gm.AddComponent<AudioSource>();
             var source = gm.AddComponent<LivekitAudioSource>();
             source.audioSource = audioSource;
+            source.monoMode = mono;
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
         }
@@ -131,7 +134,28 @@ namespace LiveKit.Rooms.Streaming.Audio
             Option<AudioStream> resource = stream.Resource;
             if (resource.Has)
             {
-                resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+                if (monoMode && channels >= 2)
+                {
+                    int samplesPerChannel = data.Length / channels;
+
+                    if (monoBuffer.Length != samplesPerChannel)
+                        monoBuffer = new float[samplesPerChannel];
+
+                    resource.Value.ReadAudio(monoBuffer.AsSpan(), 1, sampleRate);
+
+                    for (int i = 0; i < samplesPerChannel; i++)
+                    {
+                        float sample = monoBuffer[i];
+
+                        for (int ch = 0; ch < channels; ch++)
+                            data[i * channels + ch] = sample;
+                    }
+                }
+                else
+                {
+                    resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+                }
+
                 if (wavWriter.HasValue)
                 {
                     if (data.Length != wavBuffer.Length)
