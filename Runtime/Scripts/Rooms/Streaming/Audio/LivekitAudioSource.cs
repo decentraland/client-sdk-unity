@@ -14,11 +14,23 @@ namespace LiveKit.Rooms.Streaming.Audio
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
         private bool monoMode;
+        private float pan;
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
         public bool IsWavActive => wavWriter.HasValue;
+
+        /// <summary>
+        /// Stereo pan for mono mode: -1 = full left, 0 = center, +1 = full right.
+        /// Set from the main thread; read on the audio thread.
+        /// Only effective when <c>mono = true</c>.
+        /// </summary>
+        public float Pan
+        {
+            get => pan;
+            set => pan = value < -1f ? -1f : value > 1f ? 1f : value;
+        }
 
         public static LivekitAudioSource New(bool explicitName = false, bool mono = false)
         {
@@ -137,14 +149,23 @@ namespace LiveKit.Rooms.Streaming.Audio
 
                 if (monoMode && channels >= 2)
                 {
+                    float localPan = pan;
+                    float p = (localPan + 1f) * 0.5f;
+                    float gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
+                    float gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
+
                     int samplesPerChannel = data.Length / channels;
 
                     for (int i = 0; i < samplesPerChannel; i++)
                     {
                         float sample = data[i * channels];
+                        int offset = i * channels;
+                        data[offset] = sample * gainL;
+                        data[offset + 1] = sample * gainR;
 
-                        for (int ch = 0; ch < channels; ch++)
-                            data[i * channels + ch] = sample;
+                        // Fallback for surround formats (quad, 5.1, 7.1): fill remaining channels with mono, no panning
+                        for (int ch = 2; ch < channels; ch++)
+                            data[offset + ch] = sample;
                     }
                 }
 
