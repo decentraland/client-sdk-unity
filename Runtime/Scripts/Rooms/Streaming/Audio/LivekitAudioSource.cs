@@ -40,6 +40,13 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float azimuthAngle;
         private float elevationAngle;
 
+        private const float SPEED_OF_SOUND = 343f;
+        private const int DELAY_BUFFER_SIZE = 256;
+        private const int DELAY_BUFFER_MASK = DELAY_BUFFER_SIZE - 1;
+
+        private float[] delayBuffer;
+        private int delayWritePos;
+
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
@@ -181,10 +188,13 @@ namespace LiveKit.Rooms.Streaming.Audio
                     switch (spatializationMode)
                     {
                         case SpatializationMode.ILD:
-                        case SpatializationMode.ITD:
-                        case SpatializationMode.ITD_ILD:
-                        case SpatializationMode.ParametricHRTF:
                             ApplyILD(data, channels, samplesPerChannel);
+                            break;
+                        case SpatializationMode.ITD:
+                            ApplyITD(data, channels, samplesPerChannel, false);
+                            break;
+                        case SpatializationMode.ITD_ILD:
+                            ApplyITD(data, channels, samplesPerChannel, true);
                             break;
                     }
                 }
@@ -231,6 +241,80 @@ namespace LiveKit.Rooms.Streaming.Audio
                 for (int ch = 2; ch < channels; ch++)
                     data[offset + ch] = sample;
             }
+        }
+
+        /// <param name="withILD">When true, applies ILD gains on top of the ITD delay (ITD_ILD mode).</param>
+        private void ApplyITD(float[] data, int channels, int samplesPerChannel, bool withILD)
+        {
+            float az = azimuthAngle;
+            float el = elevationAngle;
+
+            // Reduce effective azimuth by elevation: source directly above → no ITD
+            float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
+
+            // Woodworth spherical-head model: ITD in seconds
+            float itdSeconds = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND;
+            float itdSamples = itdSeconds * sampleRate;
+
+            // Source to the right (az > 0) → contralateral (left) ear is delayed
+            float delayL, delayR;
+            if (az >= 0f)
+            {
+                delayL = itdSamples;
+                delayR = 0f;
+            }
+            else
+            {
+                delayL = 0f;
+                delayR = itdSamples;
+            }
+
+            float gainL = 1f;
+            float gainR = 1f;
+            if (withILD)
+            {
+                float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
+                float p = (pan + 1f) * 0.5f;
+                gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
+                gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
+            }
+
+            if (delayBuffer == null)
+                delayBuffer = new float[DELAY_BUFFER_SIZE];
+
+            for (int i = 0; i < samplesPerChannel; i++)
+            {
+                float sample = data[i * channels];
+
+                delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = sample;
+
+                float sampleL = ReadDelayed(delayL);
+                float sampleR = ReadDelayed(delayR);
+
+                int offset = i * channels;
+                data[offset] = sampleL * gainL;
+                data[offset + 1] = sampleR * gainR;
+
+                // Fallback for surround formats (quad, 5.1, 7.1): fill remaining channels with mono, no panning
+                for (int ch = 2; ch < channels; ch++)
+                    data[offset + ch] = sample;
+
+                delayWritePos++;
+            }
+        }
+
+        /// <summary>
+        /// Read from the circular delay buffer with fractional-sample linear interpolation.
+        /// Must be called after writing the current sample to delayBuffer[delayWritePos].
+        /// </summary>
+        private float ReadDelayed(float delaySamples)
+        {
+            float readPos = delayWritePos - delaySamples;
+            int idx = (int)readPos;
+            float frac = readPos - idx;
+
+            return delayBuffer[idx & DELAY_BUFFER_MASK] * (1f - frac)
+                 + delayBuffer[(idx + 1) & DELAY_BUFFER_MASK] * frac;
         }
     }
 }
