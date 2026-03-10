@@ -6,13 +6,11 @@ using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
 {
-    public enum SpatializationMode
+    public enum ILDMode
     {
         None,
-        ILD,
-        ITD,
-        ITD_ILD,
-        ParametricHRTF
+        EqualPower,
+        HeadShadow
     }
 
     public class LivekitAudioSource : MonoBehaviour
@@ -23,18 +21,26 @@ namespace LiveKit.Rooms.Streaming.Audio
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
 
-        [Header("Spatialization")]
-        public SpatializationMode spatializationMode = SpatializationMode.None;
-
         [Header("ILD — Interaural Level Difference")]
+        [Tooltip("None = stereo passthrough. EqualPower = volume-only pan (L/R gain). HeadShadow = EqualPower + low-pass filter on the far ear (head blocks high frequencies).")]
+        public ILDMode ildMode = ILDMode.None;
+        [Tooltip("How strongly the volume shifts between left and right ear. 0 = no panning (center), 1 = full panning.")]
         [Range(0f, 1f)] public float ildStrength = 1f;
+        [Tooltip("Minimum cutoff frequency (Hz) of the low-pass filter on the far ear at 90° azimuth. Lower = more muffled sound behind the head. Only used in HeadShadow mode.")]
+        [Range(500f, 4000f)] public float shadowCutoffHz = 1500f;
+        [Tooltip("Strength of the head shadow effect. 0 = no filtering, 1 = full low-pass on the far ear. Only used in HeadShadow mode.")]
+        [Range(0f, 1f)] public float shadowStrength = 0.7f;
 
         [Header("ITD — Interaural Time Difference")]
+        [Tooltip("Enable time delay on the far ear. The brain uses this delay (~0.6 ms max) to localize sounds at low frequencies. Works independently of ILD.")]
+        public bool enableITD;
+        [Tooltip("Radius of the listener's head in meters. Determines the maximum interaural delay. Average human head ≈ 0.0875 m.")]
         [Range(0.05f, 0.15f)] public float headRadius = 0.0875f;
 
-        [Header("Parametric HRTF — Head Shadow")]
-        [Range(500f, 4000f)] public float shadowCutoffHz = 1500f;
-        [Range(0f, 1f)] public float shadowStrength = 0.7f;
+        [Header("HRTF — Pinna / Spectral Cues")]
+        [Tooltip("Enable pinna (ear shape) simulation via notch filters. Provides vertical localization cues (up/down) that ILD and ITD cannot. Not yet implemented.")]
+        public bool enableHRTF;
+        [Tooltip("How much the elevation angle affects the pinna notch filter frequency. 0 = no vertical cues, 1 = full elevation-dependent filtering.")]
         [Range(0f, 1f)] public float elevationInfluence = 0.5f;
 
         private float azimuthAngle;
@@ -46,6 +52,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private float[] delayBuffer;
         private int delayWritePos;
+
+        private float lpfStateL;
+        private float lpfStateR;
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -71,7 +80,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             source.audioSource = audioSource;
 
             if (mono)
-                source.spatializationMode = SpatializationMode.ILD;
+                source.ildMode = ILDMode.EqualPower;
 
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
@@ -181,23 +190,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                if (spatializationMode != SpatializationMode.None && channels >= 2)
-                {
-                    int samplesPerChannel = data.Length / channels;
-
-                    switch (spatializationMode)
-                    {
-                        case SpatializationMode.ILD:
-                            ApplyILD(data, channels, samplesPerChannel);
-                            break;
-                        case SpatializationMode.ITD:
-                            ApplyITD(data, channels, samplesPerChannel, false);
-                            break;
-                        case SpatializationMode.ITD_ILD:
-                            ApplyITD(data, channels, samplesPerChannel, true);
-                            break;
-                    }
-                }
+                bool spatialized = ildMode != ILDMode.None || enableITD || enableHRTF;
+                if (spatialized && channels >= 2)
+                    ApplySpatializationPipeline(data, channels);
 
                 if (wavWriter.HasValue)
                 {
@@ -219,59 +214,16 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
         }
 
-        private void ApplyILD(float[] data, int channels, int samplesPerChannel)
+        private void ApplySpatializationPipeline(float[] data, int channels)
         {
             float az = azimuthAngle;
             float el = elevationAngle;
+            int samplesPerChannel = data.Length / channels;
 
-            float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
-
-            float p = (pan + 1f) * 0.5f;
-            float gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
-            float gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
-
-            for (int i = 0; i < samplesPerChannel; i++)
-            {
-                float sample = data[i * channels];
-                int offset = i * channels;
-                data[offset] = sample * gainL;
-                data[offset + 1] = sample * gainR;
-
-                // Fallback for surround formats (quad, 5.1, 7.1): fill remaining channels with mono, no panning
-                for (int ch = 2; ch < channels; ch++)
-                    data[offset + ch] = sample;
-            }
-        }
-
-        /// <param name="withILD">When true, applies ILD gains on top of the ITD delay (ITD_ILD mode).</param>
-        private void ApplyITD(float[] data, int channels, int samplesPerChannel, bool withILD)
-        {
-            float az = azimuthAngle;
-            float el = elevationAngle;
-
-            // Reduce effective azimuth by elevation: source directly above → no ITD
-            float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
-
-            // Woodworth spherical-head model: ITD in seconds
-            float itdSeconds = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND;
-            float itdSamples = itdSeconds * sampleRate;
-
-            // Source to the right (az > 0) → contralateral (left) ear is delayed
-            float delayL, delayR;
-            if (az >= 0f)
-            {
-                delayL = itdSamples;
-                delayR = 0f;
-            }
-            else
-            {
-                delayL = 0f;
-                delayR = itdSamples;
-            }
-
+            // Pre-compute ILD gains
             float gainL = 1f;
             float gainR = 1f;
-            if (withILD)
+            if (ildMode != ILDMode.None)
             {
                 float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
                 float p = (pan + 1f) * 0.5f;
@@ -279,27 +231,75 @@ namespace LiveKit.Rooms.Streaming.Audio
                 gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
             }
 
-            if (delayBuffer == null)
-                delayBuffer = new float[DELAY_BUFFER_SIZE];
+            // Pre-compute ITD delays
+            float delayL = 0f;
+            float delayR = 0f;
+            if (enableITD)
+            {
+                float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
+                float itdSamples = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND * sampleRate;
+
+                if (az >= 0f)
+                    delayL = itdSamples;
+                else
+                    delayR = itdSamples;
+
+                if (delayBuffer == null)
+                    delayBuffer = new float[DELAY_BUFFER_SIZE];
+            }
+
+            // Pre-compute HeadShadow LPF coefficient
+            float lpfAlpha = 0f;
+            bool shadowOnLeft = false;
+            if (ildMode == ILDMode.HeadShadow)
+            {
+                float shadowAmount = Mathf.Abs(Mathf.Sin(az)) * shadowStrength * Mathf.Cos(el);
+                float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
+                lpfAlpha = 1f / (1f + sampleRate / (2f * Mathf.PI * cutoff));
+                shadowOnLeft = az >= 0f;
+            }
 
             for (int i = 0; i < samplesPerChannel; i++)
             {
-                float sample = data[i * channels];
+                float mono = data[i * channels];
+                float sampleL = mono;
+                float sampleR = mono;
 
-                delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = sample;
+                // Stage 1: ITD — delay the contralateral ear
+                if (enableITD)
+                {
+                    delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = mono;
+                    sampleL = ReadDelayed(delayL);
+                    sampleR = ReadDelayed(delayR);
+                    delayWritePos++;
+                }
 
-                float sampleL = ReadDelayed(delayL);
-                float sampleR = ReadDelayed(delayR);
+                // Stage 2: ILD — apply level difference
+                sampleL *= gainL;
+                sampleR *= gainR;
+
+                // Stage 3: HeadShadow — one-pole LPF on contralateral ear
+                if (ildMode == ILDMode.HeadShadow)
+                {
+                    if (shadowOnLeft)
+                    {
+                        lpfStateL += lpfAlpha * (sampleL - lpfStateL);
+                        sampleL = lpfStateL;
+                    }
+                    else
+                    {
+                        lpfStateR += lpfAlpha * (sampleR - lpfStateR);
+                        sampleR = lpfStateR;
+                    }
+                }
 
                 int offset = i * channels;
-                data[offset] = sampleL * gainL;
-                data[offset + 1] = sampleR * gainR;
+                data[offset] = sampleL;
+                data[offset + 1] = sampleR;
 
                 // Fallback for surround formats (quad, 5.1, 7.1): fill remaining channels with mono, no panning
                 for (int ch = 2; ch < channels; ch++)
-                    data[offset + ch] = sample;
-
-                delayWritePos++;
+                    data[offset + ch] = mono;
             }
         }
 
