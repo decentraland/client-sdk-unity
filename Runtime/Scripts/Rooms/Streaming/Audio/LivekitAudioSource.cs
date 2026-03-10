@@ -19,7 +19,8 @@ namespace LiveKit.Rooms.Streaming.Audio
         TwoPole12dB,
         ThreePole18dB,
         FourPole24dB,
-        Biquad12dB
+        Biquad12dB,
+        MultiBand3
     }
 
     public class LivekitAudioSource : MonoBehaviour
@@ -47,8 +48,10 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "TwoPole (12 dB/oct) — DEFAULT, best match to measured head shadow slope.\n" +
                  "ThreePole (18 dB/oct) — exaggerated, useful for artistic emphasis.\n" +
                  "FourPole (24 dB/oct) — very aggressive, 'phone in a pillow' effect.\n" +
-                 "Biquad (12 dB/oct + Q) — same slope as TwoPole but with adjustable resonance peak.\n\n" +
-                 "Ref: Measurements show ~5 dB ILD at 1 kHz → ~20 dB at 8 kHz for 90° azimuth source (Blauert, 1997).")]
+                 "Biquad (12 dB/oct + Q) — same slope as TwoPole but with adjustable resonance peak.\n" +
+                 "MultiBand3 — 3-band crossover with independent per-band gain (dB). " +
+                 "Most accurate: matches measured head shadow curve (<500 Hz: -2 dB, 1-2 kHz: -10 dB, >2 kHz: -20 dB).\n\n" +
+                 "Ref: Blauert (1997) — ~5 dB ILD at 1 kHz → ~20 dB at 8 kHz for 90° azimuth source.")]
         public ShadowFilterOrder shadowFilterOrder = ShadowFilterOrder.TwoPole12dB;
         [Tooltip("Cutoff frequency (Hz) of the LPF applied to the far ear at maximum angle (90° azimuth).\n" +
                  "Physical basis: head diameter ~17.5 cm ≈ wavelength at ~2 kHz. Shadow becomes significant above ~1–1.5 kHz.\n\n" +
@@ -62,6 +65,30 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Values > 1 add a resonant peak at cutoff, making the transition sharper and more 'colored'.\n\n" +
                  "Ref: Robert Bristow-Johnson, Audio EQ Cookbook.")]
         [Range(0.5f, 3f)] public float biquadQ = 0.707f;
+
+        [Header("MultiBand3 Crossover (MultiBand3 mode only)")]
+        [Tooltip("Crossover frequency between Low and Mid bands (Hz).\n" +
+                 "Below this frequency: sound passes almost unchanged (head is transparent to long wavelengths).\n" +
+                 "500 Hz default — head diameter ~17.5 cm is much smaller than wavelength at 500 Hz (~69 cm).\n\n" +
+                 "Ref: Head shadow becomes measurable above ~500 Hz (Blauert, 1997).")]
+        [Range(200f, 2000f)] public float crossoverLowMid = 500f;
+        [Tooltip("Crossover frequency between Mid and High bands (Hz).\n" +
+                 "Above this frequency: strong attenuation — head fully blocks short wavelengths.\n" +
+                 "2000 Hz default — wavelength ~17 cm ≈ head diameter, strong shadow onset.\n\n" +
+                 "Ref: ILD exceeds 10 dB above 2 kHz for 90° sources (Blauert, 1997).")]
+        [Range(1000f, 8000f)] public float crossoverMidHigh = 2000f;
+        [Tooltip("Attenuation of the Low band on the far ear (dB). Negative = quieter.\n" +
+                 "-2 dB default — matches measured <500 Hz: ~0-2 dB shadow at 90° azimuth.\n" +
+                 "Low frequencies diffract around the head easily, so minimal attenuation.")]
+        [Range(-30f, 0f)] public float lowBandDb = -2f;
+        [Tooltip("Attenuation of the Mid band on the far ear (dB). Negative = quieter.\n" +
+                 "-10 dB default — matches measured 1-2 kHz: ~5-10 dB shadow at 90° azimuth.\n" +
+                 "This range contains voice formants (300-3000 Hz), so changes here are very audible.")]
+        [Range(-30f, 0f)] public float midBandDb = -10f;
+        [Tooltip("Attenuation of the High band on the far ear (dB). Negative = quieter.\n" +
+                 "-20 dB default — matches measured >4 kHz: ~15-20 dB shadow at 90° azimuth.\n" +
+                 "High frequencies are strongly blocked by the head; this is the most noticeable band.")]
+        [Range(-30f, 0f)] public float highBandDb = -20f;
 
         [Header("ITD — Interaural Time Difference")]
         [Tooltip("Enable interaural time delay on the far ear.\n" +
@@ -105,6 +132,10 @@ namespace LiveKit.Rooms.Streaming.Audio
         // Biquad filter states (Direct Form II Transposed, per ear)
         private float bqZ1L, bqZ2L;
         private float bqZ1R, bqZ2R;
+
+        // MultiBand3 biquad states (LPF + HPF per ear, Direct Form II Transposed)
+        private float mbLpfZ1L, mbLpfZ2L, mbHpfZ1L, mbHpfZ2L;
+        private float mbLpfZ1R, mbLpfZ2R, mbHpfZ1R, mbHpfZ2R;
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -301,18 +332,56 @@ namespace LiveKit.Rooms.Streaming.Audio
             // Pre-compute HeadShadow filter coefficients
             bool headShadow = ildMode == ILDMode.HeadShadow;
             bool useBiquad = headShadow && shadowFilterOrder == ShadowFilterOrder.Biquad12dB;
+            bool useMultiBand = headShadow && shadowFilterOrder == ShadowFilterOrder.MultiBand3;
             float lpfAlpha = 0f;
             float bqB0 = 0f, bqB1 = 0f, bqB2 = 0f, bqA1 = 0f, bqA2 = 0f;
+            // MultiBand3 coefficients (LPF at crossoverLowMid, HPF at crossoverMidHigh)
+            float mbLB0 = 0f, mbLB1 = 0f, mbLB2 = 0f, mbLA1 = 0f, mbLA2 = 0f;
+            float mbHB0 = 0f, mbHB1 = 0f, mbHB2 = 0f, mbHA1 = 0f, mbHA2 = 0f;
+            float mbGainLow = 1f, mbGainMid = 1f, mbGainHigh = 1f;
             bool shadowOnLeft = false;
 
             if (headShadow)
             {
                 float shadowAmount = Mathf.Abs(Mathf.Sin(az)) * shadowStrength * Mathf.Cos(el);
-                float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
                 shadowOnLeft = az >= 0f;
 
-                if (useBiquad)
+                if (useMultiBand)
                 {
+                    // Per-band gains lerped by shadowAmount: 0 dB at front → configured dB at 90°
+                    mbGainLow = Mathf.Pow(10f, lowBandDb * shadowAmount / 20f);
+                    mbGainMid = Mathf.Pow(10f, midBandDb * shadowAmount / 20f);
+                    mbGainHigh = Mathf.Pow(10f, highBandDb * shadowAmount / 20f);
+
+                    const float butterQ = 0.707f;
+
+                    // LPF biquad at crossoverLowMid
+                    float w0L = 2f * Mathf.PI * crossoverLowMid / sampleRate;
+                    float cosL = Mathf.Cos(w0L);
+                    float sinL = Mathf.Sin(w0L);
+                    float alphaL = sinL / (2f * butterQ);
+                    float a0InvL = 1f / (1f + alphaL);
+                    mbLB0 = (1f - cosL) * 0.5f * a0InvL;
+                    mbLB1 = (1f - cosL) * a0InvL;
+                    mbLB2 = mbLB0;
+                    mbLA1 = -2f * cosL * a0InvL;
+                    mbLA2 = (1f - alphaL) * a0InvL;
+
+                    // HPF biquad at crossoverMidHigh
+                    float w0H = 2f * Mathf.PI * crossoverMidHigh / sampleRate;
+                    float cosH = Mathf.Cos(w0H);
+                    float sinH = Mathf.Sin(w0H);
+                    float alphaH = sinH / (2f * butterQ);
+                    float a0InvH = 1f / (1f + alphaH);
+                    mbHB0 = (1f + cosH) * 0.5f * a0InvH;
+                    mbHB1 = -(1f + cosH) * a0InvH;
+                    mbHB2 = mbHB0;
+                    mbHA1 = -2f * cosH * a0InvH;
+                    mbHA2 = (1f - alphaH) * a0InvH;
+                }
+                else if (useBiquad)
+                {
+                    float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
                     float w0 = 2f * Mathf.PI * cutoff / sampleRate;
                     float cosW0 = Mathf.Cos(w0);
                     float sinW0 = Mathf.Sin(w0);
@@ -327,6 +396,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 }
                 else
                 {
+                    float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
                     lpfAlpha = 1f / (1f + sampleRate / (2f * Mathf.PI * cutoff));
                 }
             }
@@ -350,13 +420,25 @@ namespace LiveKit.Rooms.Streaming.Audio
                 sampleL *= gainL;
                 sampleR *= gainR;
 
-                // Stage 3: HeadShadow — LPF on contralateral ear
+                // Stage 3: HeadShadow — filter on contralateral ear
                 if (headShadow)
                 {
-                    if (shadowOnLeft)
-                        sampleL = ApplyShadowFilter(sampleL, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, true);
+                    if (useMultiBand)
+                    {
+                        if (shadowOnLeft)
+                            sampleL = ApplyMultiBandFilter(sampleL, mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
+                                mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, true);
+                        else
+                            sampleR = ApplyMultiBandFilter(sampleR, mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
+                                mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, false);
+                    }
                     else
-                        sampleR = ApplyShadowFilter(sampleR, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, false);
+                    {
+                        if (shadowOnLeft)
+                            sampleL = ApplyShadowFilter(sampleL, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, true);
+                        else
+                            sampleR = ApplyShadowFilter(sampleR, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, false);
+                    }
                 }
 
                 int offset = i * channels;
@@ -410,6 +492,38 @@ namespace LiveKit.Rooms.Streaming.Audio
                 if (shadowFilterOrder >= ShadowFilterOrder.FourPole24dB) { lpfS4R += alpha * (s - lpfS4R); s = lpfS4R; }
                 return s;
             }
+        }
+
+        private float ApplyMultiBandFilter(float input,
+            float lb0, float lb1, float lb2, float la1, float la2,
+            float hb0, float hb1, float hb2, float ha1, float ha2,
+            float gLow, float gMid, float gHigh, bool isLeft)
+        {
+            float low, high;
+
+            if (isLeft)
+            {
+                low = lb0 * input + mbLpfZ1L;
+                mbLpfZ1L = lb1 * input - la1 * low + mbLpfZ2L;
+                mbLpfZ2L = lb2 * input - la2 * low;
+
+                high = hb0 * input + mbHpfZ1L;
+                mbHpfZ1L = hb1 * input - ha1 * high + mbHpfZ2L;
+                mbHpfZ2L = hb2 * input - ha2 * high;
+            }
+            else
+            {
+                low = lb0 * input + mbLpfZ1R;
+                mbLpfZ1R = lb1 * input - la1 * low + mbLpfZ2R;
+                mbLpfZ2R = lb2 * input - la2 * low;
+
+                high = hb0 * input + mbHpfZ1R;
+                mbHpfZ1R = hb1 * input - ha1 * high + mbHpfZ2R;
+                mbHpfZ2R = hb2 * input - ha2 * high;
+            }
+
+            float mid = input - low - high;
+            return low * gLow + mid * gMid + high * gHigh;
         }
 
         /// <summary>
