@@ -2,6 +2,7 @@ using System;
 using LiveKit.Audio;
 using LiveKit.Internal;
 using RichTypes;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
@@ -25,6 +26,12 @@ namespace LiveKit.Rooms.Streaming.Audio
 
     public class LivekitAudioSource : MonoBehaviour
     {
+        private static readonly ProfilerMarker s_MarkerSpatial = new("LiveKit.Spatial");
+        private static readonly ProfilerMarker s_MarkerITD = new("LiveKit.Spatial.ITD");
+        private static readonly ProfilerMarker s_MarkerILD = new("LiveKit.Spatial.ILD");
+        private static readonly ProfilerMarker s_MarkerHeadShadow = new("LiveKit.Spatial.HeadShadow");
+        private static readonly ProfilerMarker s_MarkerHRTF = new("LiveKit.Spatial.HRTF");
+
         private static ulong counter;
 
         private int sampleRate;
@@ -106,14 +113,41 @@ namespace LiveKit.Rooms.Streaming.Audio
         [Header("HRTF — Pinna / Spectral Cues")]
         [Tooltip("Enable pinna (ear shape) simulation via elevation-dependent notch filters.\n" +
                  "Provides the only cue for vertical localization (up/down) and front/back disambiguation.\n" +
-                 "ILD and ITD alone cannot resolve the 'cone of confusion'.\n\n" +
-                 "NOT YET IMPLEMENTED — planned for Iteration C.")]
+                 "ILD and ITD alone cannot resolve the 'cone of confusion' — a cone of directions with identical ILD/ITD.\n\n" +
+                 "Primary notch: biquad peaking EQ at pinnaNotchFreq, shifted by elevation.\n" +
+                 "Secondary notch: at pinnaSecondaryRatio × primary freq (set pinnaSecondaryStrength > 0 to enable).\n\n" +
+                 "Ref: Hebrank & Wright (1974) — pinna spectral cues at 6-10 kHz for vertical localization.")]
         public bool enableHRTF;
-        [Tooltip("How much the elevation angle affects the pinna notch frequency.\n" +
-                 "0 = no vertical cues, 1 = full elevation-dependent filtering.\n" +
-                 "Real pinna notches shift ~6–10 kHz depending on elevation.\n\n" +
-                 "Ref: Hebrank & Wright (1974) — pinna spectral cues for vertical localization.")]
+        [Tooltip("How much the elevation angle shifts the notch frequency.\n" +
+                 "0 = notch at fixed pinnaNotchFreq (no vertical cues), 1 = full shift (±40% of base freq).\n" +
+                 "Positive elevation (above) shifts notch up, negative (below) shifts down.\n\n" +
+                 "Ref: Hebrank & Wright (1974) — pinna notch frequency varies ~6-10 kHz with elevation.")]
         [Range(0f, 1f)] public float elevationInfluence = 0.5f;
+        [Tooltip("Base notch frequency at elevation = 0° (horizontal plane).\n" +
+                 "Pinna resonance creates a spectral notch typically at ~6-8 kHz.\n" +
+                 "7000 Hz default — center of typical pinna notch range.\n\n" +
+                 "Ref: Shaw (1997), Lopez-Poveda & Meddis (1996).")]
+        [Range(4000f, 12000f)] public float pinnaNotchFreq = 7000f;
+        [Tooltip("Q factor (narrowness) of the notch filter. Higher Q = narrower, deeper notch.\n" +
+                 "3-5 is typical for pinna notches. Too narrow may be inaudible on speech.\n\n" +
+                 "4 default — good balance of perceptibility and naturalness.")]
+        [Range(1f, 10f)] public float pinnaNotchQ = 4f;
+        [Tooltip("Depth of the primary pinna notch in dB. Negative = quieter at notch frequency.\n" +
+                 "-9 dB default — matches typical measured pinna notch depth.\n" +
+                 "Realistic range: -6 to -15 dB.\n\n" +
+                 "Ref: Lopez-Poveda & Meddis (1996) — measured pinna notch depths 6-15 dB.")]
+        [Range(-20f, 0f)] public float pinnaNotchDepthDb = -9f;
+
+        [Header("HRTF — Secondary Notch (C2)")]
+        [Tooltip("Frequency ratio of secondary notch relative to primary.\n" +
+                 "1.6× default — second harmonic of pinna cavity resonance.\n" +
+                 "Set pinnaSecondaryStrength to 0 to disable (fallback to single-notch C1 mode).\n\n" +
+                 "Ref: Lopez-Poveda & Meddis (1996) — multiple pinna notches at harmonic ratios.")]
+        [Range(1.2f, 2.5f)] public float pinnaSecondaryRatio = 1.6f;
+        [Tooltip("Depth of secondary notch relative to primary. 0 = disabled (C1 only), 1 = same depth as primary.\n" +
+                 "0.6 default — secondary is typically shallower.\n\n" +
+                 "Set to 0 to compare single-notch (C1) vs dual-notch (C2) in real time.")]
+        [Range(0f, 1f)] public float pinnaSecondaryStrength = 0.6f;
 
         private float azimuthAngle;
         private float elevationAngle;
@@ -136,6 +170,14 @@ namespace LiveKit.Rooms.Streaming.Audio
         // MultiBand3 biquad states (LPF + HPF per ear, Direct Form II Transposed)
         private float mbLpfZ1L, mbLpfZ2L, mbHpfZ1L, mbHpfZ2L;
         private float mbLpfZ1R, mbLpfZ2R, mbHpfZ1R, mbHpfZ2R;
+
+        // HRTF primary pinna notch states (peaking EQ biquad, both ears)
+        private float hrfZ1L, hrfZ2L, hrfZ1R, hrfZ2R;
+
+        // HRTF secondary pinna notch states (peaking EQ biquad, both ears)
+        private float hrf2Z1L, hrf2Z2L, hrf2Z1R, hrf2Z2R;
+
+        private float[] monoBuffer;
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -297,29 +339,37 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private void ApplySpatializationPipeline(float[] data, int channels)
         {
+            using var _ = s_MarkerSpatial.Auto();
+
             float az = azimuthAngle;
             float el = elevationAngle;
             int samplesPerChannel = data.Length / channels;
 
-            // Pre-compute ILD gains
-            float gainL = 1f;
-            float gainR = 1f;
-            if (ildMode != ILDMode.None)
+            if (monoBuffer == null || monoBuffer.Length < samplesPerChannel)
+                monoBuffer = new float[samplesPerChannel];
+
+            for (int i = 0; i < samplesPerChannel; i++)
             {
-                float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
-                float p = (pan + 1f) * 0.5f;
-                gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
-                gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
+                float mono = data[i * channels];
+                monoBuffer[i] = mono;
+
+                int offset = i * channels;
+                data[offset] = mono;
+                data[offset + 1] = mono;
+                for (int ch = 2; ch < channels; ch++)
+                    data[offset + ch] = mono;
             }
 
-            // Pre-compute ITD delays
-            float delayL = 0f;
-            float delayR = 0f;
+            // Stage 1: ITD — delay the contralateral ear
             if (enableITD)
             {
+                using var itd = s_MarkerITD.Auto();
+
                 float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
                 float itdSamples = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND * sampleRate;
 
+                float delayL = 0f;
+                float delayR = 0f;
                 if (az >= 0f)
                     delayL = itdSamples;
                 else
@@ -327,35 +377,60 @@ namespace LiveKit.Rooms.Streaming.Audio
 
                 if (delayBuffer == null)
                     delayBuffer = new float[DELAY_BUFFER_SIZE];
+
+                for (int i = 0; i < samplesPerChannel; i++)
+                {
+                    delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = monoBuffer[i];
+                    int offset = i * channels;
+                    data[offset] = ReadDelayed(delayL);
+                    data[offset + 1] = ReadDelayed(delayR);
+                    delayWritePos++;
+                }
             }
 
-            // Pre-compute HeadShadow filter coefficients
-            bool headShadow = ildMode == ILDMode.HeadShadow;
-            bool useBiquad = headShadow && shadowFilterOrder == ShadowFilterOrder.Biquad12dB;
-            bool useMultiBand = headShadow && shadowFilterOrder == ShadowFilterOrder.MultiBand3;
-            float lpfAlpha = 0f;
-            float bqB0 = 0f, bqB1 = 0f, bqB2 = 0f, bqA1 = 0f, bqA2 = 0f;
-            // MultiBand3 coefficients (LPF at crossoverLowMid, HPF at crossoverMidHigh)
-            float mbLB0 = 0f, mbLB1 = 0f, mbLB2 = 0f, mbLA1 = 0f, mbLA2 = 0f;
-            float mbHB0 = 0f, mbHB1 = 0f, mbHB2 = 0f, mbHA1 = 0f, mbHA2 = 0f;
-            float mbGainLow = 1f, mbGainMid = 1f, mbGainHigh = 1f;
-            bool shadowOnLeft = false;
-
-            if (headShadow)
+            // Stage 2: ILD — apply level difference
+            if (ildMode != ILDMode.None)
             {
+                using var ild = s_MarkerILD.Auto();
+
+                float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
+                float p = (pan + 1f) * 0.5f;
+                float gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
+                float gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
+
+                for (int i = 0; i < samplesPerChannel; i++)
+                {
+                    int offset = i * channels;
+                    data[offset] *= gainL;
+                    data[offset + 1] *= gainR;
+                }
+            }
+
+            // Stage 3: HeadShadow — LPF on contralateral ear
+            if (ildMode == ILDMode.HeadShadow)
+            {
+                using var hs = s_MarkerHeadShadow.Auto();
+
+                bool useBiquad = shadowFilterOrder == ShadowFilterOrder.Biquad12dB;
+                bool useMultiBand = shadowFilterOrder == ShadowFilterOrder.MultiBand3;
+
                 float shadowAmount = Mathf.Abs(Mathf.Sin(az)) * shadowStrength * Mathf.Cos(el);
-                shadowOnLeft = az >= 0f;
+                bool shadowOnLeft = az >= 0f;
+
+                float lpfAlpha = 0f;
+                float bqB0 = 0f, bqB1 = 0f, bqB2 = 0f, bqA1 = 0f, bqA2 = 0f;
+                float mbLB0 = 0f, mbLB1 = 0f, mbLB2 = 0f, mbLA1 = 0f, mbLA2 = 0f;
+                float mbHB0 = 0f, mbHB1 = 0f, mbHB2 = 0f, mbHA1 = 0f, mbHA2 = 0f;
+                float mbGainLow = 1f, mbGainMid = 1f, mbGainHigh = 1f;
 
                 if (useMultiBand)
                 {
-                    // Per-band gains lerped by shadowAmount: 0 dB at front → configured dB at 90°
                     mbGainLow = Mathf.Pow(10f, lowBandDb * shadowAmount / 20f);
                     mbGainMid = Mathf.Pow(10f, midBandDb * shadowAmount / 20f);
                     mbGainHigh = Mathf.Pow(10f, highBandDb * shadowAmount / 20f);
 
                     const float butterQ = 0.707f;
 
-                    // LPF biquad at crossoverLowMid
                     float w0L = 2f * Mathf.PI * crossoverLowMid / sampleRate;
                     float cosL = Mathf.Cos(w0L);
                     float sinL = Mathf.Sin(w0L);
@@ -367,7 +442,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                     mbLA1 = -2f * cosL * a0InvL;
                     mbLA2 = (1f - alphaL) * a0InvL;
 
-                    // HPF biquad at crossoverMidHigh
                     float w0H = 2f * Mathf.PI * crossoverMidHigh / sampleRate;
                     float cosH = Mathf.Cos(w0H);
                     float sinH = Mathf.Sin(w0H);
@@ -399,55 +473,66 @@ namespace LiveKit.Rooms.Streaming.Audio
                     float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
                     lpfAlpha = 1f / (1f + sampleRate / (2f * Mathf.PI * cutoff));
                 }
-            }
 
-            for (int i = 0; i < samplesPerChannel; i++)
-            {
-                float mono = data[i * channels];
-                float sampleL = mono;
-                float sampleR = mono;
-
-                // Stage 1: ITD — delay the contralateral ear
-                if (enableITD)
+                for (int i = 0; i < samplesPerChannel; i++)
                 {
-                    delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = mono;
-                    sampleL = ReadDelayed(delayL);
-                    sampleR = ReadDelayed(delayR);
-                    delayWritePos++;
-                }
-
-                // Stage 2: ILD — apply level difference
-                sampleL *= gainL;
-                sampleR *= gainR;
-
-                // Stage 3: HeadShadow — filter on contralateral ear
-                if (headShadow)
-                {
+                    int offset = i * channels;
                     if (useMultiBand)
                     {
                         if (shadowOnLeft)
-                            sampleL = ApplyMultiBandFilter(sampleL, mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
+                            data[offset] = ApplyMultiBandFilter(data[offset], mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
                                 mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, true);
                         else
-                            sampleR = ApplyMultiBandFilter(sampleR, mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
+                            data[offset + 1] = ApplyMultiBandFilter(data[offset + 1], mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
                                 mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, false);
                     }
                     else
                     {
                         if (shadowOnLeft)
-                            sampleL = ApplyShadowFilter(sampleL, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, true);
+                            data[offset] = ApplyShadowFilter(data[offset], useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, true);
                         else
-                            sampleR = ApplyShadowFilter(sampleR, useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, false);
+                            data[offset + 1] = ApplyShadowFilter(data[offset + 1], useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, false);
                     }
                 }
+            }
 
-                int offset = i * channels;
-                data[offset] = sampleL;
-                data[offset + 1] = sampleR;
+            // Stage 4: HRTF — pinna notch filters (both ears, elevation-dependent)
+            if (enableHRTF)
+            {
+                using var hrtf = s_MarkerHRTF.Auto();
 
-                // Fallback for surround formats (quad, 5.1, 7.1): fill remaining channels with mono, no panning
-                for (int ch = 2; ch < channels; ch++)
-                    data[offset + ch] = mono;
+                float normalizedEl = el / (Mathf.PI * 0.5f);
+                float primaryFreq = pinnaNotchFreq * (1f + elevationInfluence * normalizedEl * 0.4f);
+                primaryFreq = Mathf.Clamp(primaryFreq, 2000f, sampleRate * 0.45f);
+
+                ComputePeakingEQ(primaryFreq, pinnaNotchQ, pinnaNotchDepthDb, sampleRate,
+                    out float nB0p, out float nB1p, out float nB2p, out float nA1p, out float nA2p);
+
+                bool hasSecondary = pinnaSecondaryStrength > 0.01f;
+                float nB0s = 0f, nB1s = 0f, nB2s = 0f, nA1s = 0f, nA2s = 0f;
+
+                if (hasSecondary)
+                {
+                    float secondaryFreq = primaryFreq * pinnaSecondaryRatio;
+                    secondaryFreq = Mathf.Clamp(secondaryFreq, 2000f, sampleRate * 0.45f);
+                    float secondaryDepth = pinnaNotchDepthDb * pinnaSecondaryStrength;
+
+                    ComputePeakingEQ(secondaryFreq, pinnaNotchQ, secondaryDepth, sampleRate,
+                        out nB0s, out nB1s, out nB2s, out nA1s, out nA2s);
+                }
+
+                for (int i = 0; i < samplesPerChannel; i++)
+                {
+                    int offset = i * channels;
+                    data[offset] = ApplyBiquad(data[offset], nB0p, nB1p, nB2p, nA1p, nA2p, ref hrfZ1L, ref hrfZ2L);
+                    data[offset + 1] = ApplyBiquad(data[offset + 1], nB0p, nB1p, nB2p, nA1p, nA2p, ref hrfZ1R, ref hrfZ2R);
+
+                    if (hasSecondary)
+                    {
+                        data[offset] = ApplyBiquad(data[offset], nB0s, nB1s, nB2s, nA1s, nA2s, ref hrf2Z1L, ref hrf2Z2L);
+                        data[offset + 1] = ApplyBiquad(data[offset + 1], nB0s, nB1s, nB2s, nA1s, nA2s, ref hrf2Z1R, ref hrf2Z2R);
+                    }
+                }
             }
         }
 
@@ -524,6 +609,39 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             float mid = input - low - high;
             return low * gLow + mid * gMid + high * gHigh;
+        }
+
+        /// <summary>
+        /// Peaking EQ biquad coefficients (Bristow-Johnson Audio EQ Cookbook).
+        /// With negative dBGain this creates a notch at the specified frequency.
+        /// </summary>
+        private static void ComputePeakingEQ(float freq, float q, float dbGain, int sr,
+            out float b0, out float b1, out float b2, out float a1, out float a2)
+        {
+            float A = Mathf.Pow(10f, dbGain / 40f);
+            float w0 = 2f * Mathf.PI * freq / sr;
+            float cosW0 = Mathf.Cos(w0);
+            float sinW0 = Mathf.Sin(w0);
+            float alpha = sinW0 / (2f * q);
+
+            float a0Inv = 1f / (1f + alpha / A);
+            b0 = (1f + alpha * A) * a0Inv;
+            b1 = -2f * cosW0 * a0Inv;
+            b2 = (1f - alpha * A) * a0Inv;
+            a1 = b1;
+            a2 = (1f - alpha / A) * a0Inv;
+        }
+
+        /// <summary>
+        /// Generic Direct Form II Transposed biquad filter. Used for HRTF notch processing.
+        /// </summary>
+        private static float ApplyBiquad(float input, float b0, float b1, float b2,
+            float a1, float a2, ref float z1, ref float z2)
+        {
+            float y = b0 * input + z1;
+            z1 = b1 * input - a1 * y + z2;
+            z2 = b2 * input - a2 * y;
+            return y;
         }
 
         /// <summary>
