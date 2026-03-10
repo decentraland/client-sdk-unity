@@ -38,6 +38,11 @@ namespace LiveKit.Rooms.Streaming.Audio
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
 
+        [Header("Bypass")]
+        [Tooltip("Skip all spatialization — raw stereo from LiveKit, identical to the old audio flow.\n" +
+                 "Use for A/B quality comparison.")]
+        public bool bypassSpatialization;
+
         [Header("ILD — Interaural Level Difference")]
         [Tooltip("None = stereo passthrough (no spatialization).\n" +
                  "EqualPower = volume-only L/R pan via equal-power law (cos/sin gains).\n" +
@@ -313,7 +318,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                bool spatialized = ildMode != ILDMode.None || enableITD || enableHRTF;
+                bool spatialized = !bypassSpatialization && (ildMode != ILDMode.None || enableITD || enableHRTF);
                 if (spatialized && channels >= 2)
                     ApplySpatializationPipeline(data, channels);
 
