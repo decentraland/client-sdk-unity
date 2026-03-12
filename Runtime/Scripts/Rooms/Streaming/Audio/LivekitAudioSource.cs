@@ -370,15 +370,14 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 using var itd = s_MarkerITD.Auto();
 
+                float sinAz = Mathf.Sin(az);
                 float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
                 float itdSamples = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND * sampleRate;
 
-                float delayL = 0f;
-                float delayR = 0f;
-                if (az >= 0f)
-                    delayL = itdSamples;
-                else
-                    delayR = itdSamples;
+                // Continuous blend: sin(az) smoothly passes through 0 at front AND back,
+                // eliminating the click from binary ear switching at ±π
+                float delayL = itdSamples * Mathf.Max(0f, sinAz);
+                float delayR = itdSamples * Mathf.Max(0f, -sinAz);
 
                 if (delayBuffer == null)
                     delayBuffer = new float[DELAY_BUFFER_SIZE];
@@ -436,27 +435,27 @@ namespace LiveKit.Rooms.Streaming.Audio
 
                     const float butterQ = 0.707f;
 
-                    float w0L = 2f * Mathf.PI * crossoverLowMid / sampleRate;
-                    float cosL = Mathf.Cos(w0L);
-                    float sinL = Mathf.Sin(w0L);
-                    float alphaL = sinL / (2f * butterQ);
-                    float a0InvL = 1f / (1f + alphaL);
-                    mbLB0 = (1f - cosL) * 0.5f * a0InvL;
-                    mbLB1 = (1f - cosL) * a0InvL;
+                    float w0Lf = 2f * Mathf.PI * crossoverLowMid / sampleRate;
+                    float cosLf = Mathf.Cos(w0Lf);
+                    float sinLf = Mathf.Sin(w0Lf);
+                    float alphaLf = sinLf / (2f * butterQ);
+                    float a0InvLf = 1f / (1f + alphaLf);
+                    mbLB0 = (1f - cosLf) * 0.5f * a0InvLf;
+                    mbLB1 = (1f - cosLf) * a0InvLf;
                     mbLB2 = mbLB0;
-                    mbLA1 = -2f * cosL * a0InvL;
-                    mbLA2 = (1f - alphaL) * a0InvL;
+                    mbLA1 = -2f * cosLf * a0InvLf;
+                    mbLA2 = (1f - alphaLf) * a0InvLf;
 
-                    float w0H = 2f * Mathf.PI * crossoverMidHigh / sampleRate;
-                    float cosH = Mathf.Cos(w0H);
-                    float sinH = Mathf.Sin(w0H);
-                    float alphaH = sinH / (2f * butterQ);
-                    float a0InvH = 1f / (1f + alphaH);
-                    mbHB0 = (1f + cosH) * 0.5f * a0InvH;
-                    mbHB1 = -(1f + cosH) * a0InvH;
+                    float w0Hf = 2f * Mathf.PI * crossoverMidHigh / sampleRate;
+                    float cosHf = Mathf.Cos(w0Hf);
+                    float sinHf = Mathf.Sin(w0Hf);
+                    float alphaHf = sinHf / (2f * butterQ);
+                    float a0InvHf = 1f / (1f + alphaHf);
+                    mbHB0 = (1f + cosHf) * 0.5f * a0InvHf;
+                    mbHB1 = -(1f + cosHf) * a0InvHf;
                     mbHB2 = mbHB0;
-                    mbHA1 = -2f * cosH * a0InvH;
-                    mbHA2 = (1f - alphaH) * a0InvH;
+                    mbHA1 = -2f * cosHf * a0InvHf;
+                    mbHA2 = (1f - alphaHf) * a0InvHf;
                 }
                 else if (useBiquad)
                 {
