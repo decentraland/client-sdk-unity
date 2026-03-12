@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using LiveKit.Audio;
 using LiveKit.Internal;
 using RichTypes;
@@ -149,6 +150,15 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Set to 0 to compare single-notch (C1) vs dual-notch (C2) in real time.")]
         [Range(0f, 1f)] public float pinnaSecondaryStrength = 0f;
 
+        private float lipSyncAmplitude;
+
+        /// <summary>
+        /// Pre-spatialization RMS amplitude (0..1). Written on the audio thread via
+        /// <see cref="Interlocked.Exchange(ref float, float)"/>, safe to read from
+        /// the main thread for lip sync visualization.
+        /// </summary>
+        public float LipSyncAmplitude => Interlocked.CompareExchange(ref lipSyncAmplitude, 0f, 0f);
+
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
@@ -275,6 +285,11 @@ namespace LiveKit.Rooms.Streaming.Audio
             if (resource.Has)
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
+
+                float sum = 0f;
+                for (int i = 0; i < data.Length; i++)
+                    sum += data[i] * data[i];
+                Interlocked.Exchange(ref lipSyncAmplitude, Mathf.Sqrt(sum / data.Length));
 
                 spatialDsp.Process(data, channels, sampleRate, this);
 
