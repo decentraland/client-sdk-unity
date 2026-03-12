@@ -2,7 +2,6 @@ using System;
 using LiveKit.Audio;
 using LiveKit.Internal;
 using RichTypes;
-using Unity.Profiling;
 using UnityEngine;
 
 namespace LiveKit.Rooms.Streaming.Audio
@@ -26,17 +25,13 @@ namespace LiveKit.Rooms.Streaming.Audio
 
     public class LivekitAudioSource : MonoBehaviour
     {
-        private static readonly ProfilerMarker s_MarkerSpatial = new("LiveKit.Spatial");
-        private static readonly ProfilerMarker s_MarkerITD = new("LiveKit.Spatial.ITD");
-        private static readonly ProfilerMarker s_MarkerILD = new("LiveKit.Spatial.ILD");
-        private static readonly ProfilerMarker s_MarkerHeadShadow = new("LiveKit.Spatial.HeadShadow");
-        private static readonly ProfilerMarker s_MarkerHRTF = new("LiveKit.Spatial.HRTF");
-
         private static ulong counter;
 
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
         private AudioSource audioSource = null!;
+
+        internal readonly SpatialAudioDSP spatialDsp = new ();
 
         [Header("Bypass")]
         [Tooltip("Skip all spatialization — raw stereo from LiveKit, identical to the old audio flow.\n" +
@@ -154,36 +149,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Set to 0 to compare single-notch (C1) vs dual-notch (C2) in real time.")]
         [Range(0f, 1f)] public float pinnaSecondaryStrength = 0f;
 
-        private float azimuthAngle;
-        private float elevationAngle;
-
-        private const float SPEED_OF_SOUND = 343f;
-        private const int DELAY_BUFFER_SIZE = 256;
-        private const int DELAY_BUFFER_MASK = DELAY_BUFFER_SIZE - 1;
-
-        private float[] delayBuffer;
-        private int delayWritePos;
-
-        // Cascade one-pole filter states (up to 4 poles per ear)
-        private float lpfS1L, lpfS2L, lpfS3L, lpfS4L;
-        private float lpfS1R, lpfS2R, lpfS3R, lpfS4R;
-
-        // Biquad filter states (Direct Form II Transposed, per ear)
-        private float bqZ1L, bqZ2L;
-        private float bqZ1R, bqZ2R;
-
-        // MultiBand3 biquad states (LPF + HPF per ear, Direct Form II Transposed)
-        private float mbLpfZ1L, mbLpfZ2L, mbHpfZ1L, mbHpfZ2L;
-        private float mbLpfZ1R, mbLpfZ2R, mbHpfZ1R, mbHpfZ2R;
-
-        // HRTF primary pinna notch states (peaking EQ biquad, both ears)
-        private float hrfZ1L, hrfZ2L, hrfZ1R, hrfZ2R;
-
-        // HRTF secondary pinna notch states (peaking EQ biquad, both ears)
-        private float hrf2Z1L, hrf2Z2L, hrf2Z1R, hrf2Z2R;
-
-        private float[] monoBuffer;
-
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
 
@@ -192,12 +157,9 @@ namespace LiveKit.Rooms.Streaming.Audio
         /// <summary>
         /// Set the 3D angles from the main thread. Read on the audio thread.
         /// </summary>
-        /// <param name="azimuth">Horizontal angle in radians (-PI..+PI). 0 = front, +PI/2 = right.</param>
-        /// <param name="elevation">Vertical angle in radians (-PI/2..+PI/2). 0 = level, +PI/2 = above.</param>
         public void SetSpatialAngles(float azimuth, float elevation)
         {
-            azimuthAngle = azimuth;
-            elevationAngle = elevation;
+            spatialDsp.SetAngles(azimuth, elevation);
         }
 
         public static LivekitAudioSource New(bool explicitName = false, bool spatial = false)
@@ -296,7 +258,6 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             sampleRate = AudioSettings.outputSampleRate;
 
-            // Enable recording with different sample_rate
             if (wavWriter.HasValue)
             {
                 DisposeWavWriter();
@@ -308,7 +269,6 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
         }
 
-        // Called by Unity on the Audio thread
         private void OnAudioFilterRead(float[] data, int channels)
         {
             Option<AudioStream> resource = stream.Resource;
@@ -316,9 +276,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                bool spatialized = !bypassSpatialization && (ildMode != ILDMode.None || enableITD || enableHRTF);
-                if (spatialized && channels >= 2)
-                    ApplySpatializationPipeline(data, channels);
+                spatialDsp.Process(data, channels, sampleRate, this);
 
                 if (wavWriter.HasValue)
                 {
@@ -327,7 +285,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                         wavBuffer = new PCMSample[data.Length];
                     }
 
-                    // TODO SIMD
                     for (var i = 0; i < data.Length; i++)
                     {
                         wavBuffer[i] = PCMSample.FromUnitySample(data[i]);
@@ -338,326 +295,6 @@ namespace LiveKit.Rooms.Streaming.Audio
                     wavWriter = writer;
                 }
             }
-        }
-
-        private void ApplySpatializationPipeline(float[] data, int channels)
-        {
-            using var _ = s_MarkerSpatial.Auto();
-
-            float az = azimuthAngle;
-            float el = elevationAngle;
-            int samplesPerChannel = data.Length / channels;
-
-            if (monoBuffer == null || monoBuffer.Length < samplesPerChannel)
-                monoBuffer = new float[samplesPerChannel];
-
-            for (int i = 0; i < samplesPerChannel; i++)
-            {
-                float mono = data[i * channels];
-                monoBuffer[i] = mono;
-
-                int offset = i * channels;
-                data[offset] = mono;
-                data[offset + 1] = mono;
-                for (int ch = 2; ch < channels; ch++)
-                    data[offset + ch] = mono;
-            }
-
-            // Stage 1: ITD — delay the contralateral ear
-            if (enableITD)
-            {
-                using var itd = s_MarkerITD.Auto();
-
-                float sinAz = Mathf.Sin(az);
-                float effectiveAz = Mathf.Min(Mathf.Abs(az), Mathf.PI * 0.5f) * Mathf.Cos(el);
-                float itdSamples = headRadius * (effectiveAz + Mathf.Sin(effectiveAz)) / SPEED_OF_SOUND * sampleRate;
-
-                // Continuous blend: sin(az) smoothly passes through 0 at front AND back,
-                // eliminating the click from binary ear switching at ±π
-                float delayL = itdSamples * Mathf.Max(0f, sinAz);
-                float delayR = itdSamples * Mathf.Max(0f, -sinAz);
-
-                if (delayBuffer == null)
-                    delayBuffer = new float[DELAY_BUFFER_SIZE];
-
-                for (int i = 0; i < samplesPerChannel; i++)
-                {
-                    delayBuffer[delayWritePos & DELAY_BUFFER_MASK] = monoBuffer[i];
-                    int offset = i * channels;
-                    data[offset] = ReadDelayed(delayL);
-                    data[offset + 1] = ReadDelayed(delayR);
-                    delayWritePos++;
-                }
-            }
-
-            // Stage 2: ILD — apply level difference
-            if (ildMode != ILDMode.None)
-            {
-                using var ild = s_MarkerILD.Auto();
-
-                float pan = Mathf.Sin(az) * Mathf.Cos(el) * ildStrength;
-                float p = (pan + 1f) * 0.5f;
-                float gainL = Mathf.Cos(p * Mathf.PI * 0.5f);
-                float gainR = Mathf.Sin(p * Mathf.PI * 0.5f);
-
-                for (int i = 0; i < samplesPerChannel; i++)
-                {
-                    int offset = i * channels;
-                    data[offset] *= gainL;
-                    data[offset + 1] *= gainR;
-                }
-            }
-
-            // Stage 3: HeadShadow — LPF on contralateral ear
-            if (ildMode == ILDMode.HeadShadow)
-            {
-                using var hs = s_MarkerHeadShadow.Auto();
-
-                bool useBiquad = shadowFilterOrder == ShadowFilterOrder.Biquad12dB;
-                bool useMultiBand = shadowFilterOrder == ShadowFilterOrder.MultiBand3;
-
-                float shadowAmount = Mathf.Abs(Mathf.Sin(az)) * shadowStrength * Mathf.Cos(el);
-                bool shadowOnLeft = az >= 0f;
-
-                float lpfAlpha = 0f;
-                float bqB0 = 0f, bqB1 = 0f, bqB2 = 0f, bqA1 = 0f, bqA2 = 0f;
-                float mbLB0 = 0f, mbLB1 = 0f, mbLB2 = 0f, mbLA1 = 0f, mbLA2 = 0f;
-                float mbHB0 = 0f, mbHB1 = 0f, mbHB2 = 0f, mbHA1 = 0f, mbHA2 = 0f;
-                float mbGainLow = 1f, mbGainMid = 1f, mbGainHigh = 1f;
-
-                if (useMultiBand)
-                {
-                    mbGainLow = Mathf.Pow(10f, lowBandDb * shadowAmount / 20f);
-                    mbGainMid = Mathf.Pow(10f, midBandDb * shadowAmount / 20f);
-                    mbGainHigh = Mathf.Pow(10f, highBandDb * shadowAmount / 20f);
-
-                    const float butterQ = 0.707f;
-
-                    float w0Lf = 2f * Mathf.PI * crossoverLowMid / sampleRate;
-                    float cosLf = Mathf.Cos(w0Lf);
-                    float sinLf = Mathf.Sin(w0Lf);
-                    float alphaLf = sinLf / (2f * butterQ);
-                    float a0InvLf = 1f / (1f + alphaLf);
-                    mbLB0 = (1f - cosLf) * 0.5f * a0InvLf;
-                    mbLB1 = (1f - cosLf) * a0InvLf;
-                    mbLB2 = mbLB0;
-                    mbLA1 = -2f * cosLf * a0InvLf;
-                    mbLA2 = (1f - alphaLf) * a0InvLf;
-
-                    float w0Hf = 2f * Mathf.PI * crossoverMidHigh / sampleRate;
-                    float cosHf = Mathf.Cos(w0Hf);
-                    float sinHf = Mathf.Sin(w0Hf);
-                    float alphaHf = sinHf / (2f * butterQ);
-                    float a0InvHf = 1f / (1f + alphaHf);
-                    mbHB0 = (1f + cosHf) * 0.5f * a0InvHf;
-                    mbHB1 = -(1f + cosHf) * a0InvHf;
-                    mbHB2 = mbHB0;
-                    mbHA1 = -2f * cosHf * a0InvHf;
-                    mbHA2 = (1f - alphaHf) * a0InvHf;
-                }
-                else if (useBiquad)
-                {
-                    float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
-                    float w0 = 2f * Mathf.PI * cutoff / sampleRate;
-                    float cosW0 = Mathf.Cos(w0);
-                    float sinW0 = Mathf.Sin(w0);
-                    float alphaBq = sinW0 / (2f * biquadQ);
-                    float a0Inv = 1f / (1f + alphaBq);
-
-                    bqB0 = (1f - cosW0) * 0.5f * a0Inv;
-                    bqB1 = (1f - cosW0) * a0Inv;
-                    bqB2 = bqB0;
-                    bqA1 = -2f * cosW0 * a0Inv;
-                    bqA2 = (1f - alphaBq) * a0Inv;
-                }
-                else
-                {
-                    float cutoff = Mathf.Lerp(20000f, shadowCutoffHz, shadowAmount);
-                    lpfAlpha = 1f / (1f + sampleRate / (2f * Mathf.PI * cutoff));
-                }
-
-                for (int i = 0; i < samplesPerChannel; i++)
-                {
-                    int offset = i * channels;
-                    if (useMultiBand)
-                    {
-                        if (shadowOnLeft)
-                            data[offset] = ApplyMultiBandFilter(data[offset], mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
-                                mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, true);
-                        else
-                            data[offset + 1] = ApplyMultiBandFilter(data[offset + 1], mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
-                                mbHB0, mbHB1, mbHB2, mbHA1, mbHA2, mbGainLow, mbGainMid, mbGainHigh, false);
-                    }
-                    else
-                    {
-                        if (shadowOnLeft)
-                            data[offset] = ApplyShadowFilter(data[offset], useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, true);
-                        else
-                            data[offset + 1] = ApplyShadowFilter(data[offset + 1], useBiquad, lpfAlpha, bqB0, bqB1, bqB2, bqA1, bqA2, false);
-                    }
-                }
-            }
-
-            // Stage 4: HRTF — pinna notch filters (both ears, elevation-dependent)
-            if (enableHRTF)
-            {
-                using var hrtf = s_MarkerHRTF.Auto();
-
-                float normalizedEl = el / (Mathf.PI * 0.5f);
-                float primaryFreq = pinnaNotchFreq * (1f + elevationInfluence * normalizedEl * 0.4f);
-                primaryFreq = Mathf.Clamp(primaryFreq, 2000f, sampleRate * 0.45f);
-
-                ComputePeakingEQ(primaryFreq, pinnaNotchQ, pinnaNotchDepthDb, sampleRate,
-                    out float nB0p, out float nB1p, out float nB2p, out float nA1p, out float nA2p);
-
-                bool hasSecondary = pinnaSecondaryStrength > 0.01f;
-                float nB0s = 0f, nB1s = 0f, nB2s = 0f, nA1s = 0f, nA2s = 0f;
-
-                if (hasSecondary)
-                {
-                    float secondaryFreq = primaryFreq * pinnaSecondaryRatio;
-                    secondaryFreq = Mathf.Clamp(secondaryFreq, 2000f, sampleRate * 0.45f);
-                    float secondaryDepth = pinnaNotchDepthDb * pinnaSecondaryStrength;
-
-                    ComputePeakingEQ(secondaryFreq, pinnaNotchQ, secondaryDepth, sampleRate,
-                        out nB0s, out nB1s, out nB2s, out nA1s, out nA2s);
-                }
-
-                for (int i = 0; i < samplesPerChannel; i++)
-                {
-                    int offset = i * channels;
-                    data[offset] = ApplyBiquad(data[offset], nB0p, nB1p, nB2p, nA1p, nA2p, ref hrfZ1L, ref hrfZ2L);
-                    data[offset + 1] = ApplyBiquad(data[offset + 1], nB0p, nB1p, nB2p, nA1p, nA2p, ref hrfZ1R, ref hrfZ2R);
-
-                    if (hasSecondary)
-                    {
-                        data[offset] = ApplyBiquad(data[offset], nB0s, nB1s, nB2s, nA1s, nA2s, ref hrf2Z1L, ref hrf2Z2L);
-                        data[offset + 1] = ApplyBiquad(data[offset + 1], nB0s, nB1s, nB2s, nA1s, nA2s, ref hrf2Z1R, ref hrf2Z2R);
-                    }
-                }
-            }
-        }
-
-        private float ApplyShadowFilter(float input, bool useBiquad,
-            float alpha, float b0, float b1, float b2, float a1, float a2, bool isLeft)
-        {
-            if (useBiquad)
-            {
-                // Biquad LPF — Direct Form II Transposed
-                if (isLeft)
-                {
-                    float y = b0 * input + bqZ1L;
-                    bqZ1L = b1 * input - a1 * y + bqZ2L;
-                    bqZ2L = b2 * input - a2 * y;
-                    return y;
-                }
-                else
-                {
-                    float y = b0 * input + bqZ1R;
-                    bqZ1R = b1 * input - a1 * y + bqZ2R;
-                    bqZ2R = b2 * input - a2 * y;
-                    return y;
-                }
-            }
-
-            // Cascade one-pole LPF — each pole adds 6 dB/octave rolloff
-            if (isLeft)
-            {
-                lpfS1L += alpha * (input - lpfS1L);
-                float s = lpfS1L;
-                if (shadowFilterOrder >= ShadowFilterOrder.TwoPole12dB) { lpfS2L += alpha * (s - lpfS2L); s = lpfS2L; }
-                if (shadowFilterOrder >= ShadowFilterOrder.ThreePole18dB) { lpfS3L += alpha * (s - lpfS3L); s = lpfS3L; }
-                if (shadowFilterOrder >= ShadowFilterOrder.FourPole24dB) { lpfS4L += alpha * (s - lpfS4L); s = lpfS4L; }
-                return s;
-            }
-            else
-            {
-                lpfS1R += alpha * (input - lpfS1R);
-                float s = lpfS1R;
-                if (shadowFilterOrder >= ShadowFilterOrder.TwoPole12dB) { lpfS2R += alpha * (s - lpfS2R); s = lpfS2R; }
-                if (shadowFilterOrder >= ShadowFilterOrder.ThreePole18dB) { lpfS3R += alpha * (s - lpfS3R); s = lpfS3R; }
-                if (shadowFilterOrder >= ShadowFilterOrder.FourPole24dB) { lpfS4R += alpha * (s - lpfS4R); s = lpfS4R; }
-                return s;
-            }
-        }
-
-        private float ApplyMultiBandFilter(float input,
-            float lb0, float lb1, float lb2, float la1, float la2,
-            float hb0, float hb1, float hb2, float ha1, float ha2,
-            float gLow, float gMid, float gHigh, bool isLeft)
-        {
-            float low, high;
-
-            if (isLeft)
-            {
-                low = lb0 * input + mbLpfZ1L;
-                mbLpfZ1L = lb1 * input - la1 * low + mbLpfZ2L;
-                mbLpfZ2L = lb2 * input - la2 * low;
-
-                high = hb0 * input + mbHpfZ1L;
-                mbHpfZ1L = hb1 * input - ha1 * high + mbHpfZ2L;
-                mbHpfZ2L = hb2 * input - ha2 * high;
-            }
-            else
-            {
-                low = lb0 * input + mbLpfZ1R;
-                mbLpfZ1R = lb1 * input - la1 * low + mbLpfZ2R;
-                mbLpfZ2R = lb2 * input - la2 * low;
-
-                high = hb0 * input + mbHpfZ1R;
-                mbHpfZ1R = hb1 * input - ha1 * high + mbHpfZ2R;
-                mbHpfZ2R = hb2 * input - ha2 * high;
-            }
-
-            float mid = input - low - high;
-            return low * gLow + mid * gMid + high * gHigh;
-        }
-
-        /// <summary>
-        /// Peaking EQ biquad coefficients (Bristow-Johnson Audio EQ Cookbook).
-        /// With negative dBGain this creates a notch at the specified frequency.
-        /// </summary>
-        private static void ComputePeakingEQ(float freq, float q, float dbGain, int sr,
-            out float b0, out float b1, out float b2, out float a1, out float a2)
-        {
-            float A = Mathf.Pow(10f, dbGain / 40f);
-            float w0 = 2f * Mathf.PI * freq / sr;
-            float cosW0 = Mathf.Cos(w0);
-            float sinW0 = Mathf.Sin(w0);
-            float alpha = sinW0 / (2f * q);
-
-            float a0Inv = 1f / (1f + alpha / A);
-            b0 = (1f + alpha * A) * a0Inv;
-            b1 = -2f * cosW0 * a0Inv;
-            b2 = (1f - alpha * A) * a0Inv;
-            a1 = b1;
-            a2 = (1f - alpha / A) * a0Inv;
-        }
-
-        /// <summary>
-        /// Generic Direct Form II Transposed biquad filter. Used for HRTF notch processing.
-        /// </summary>
-        private static float ApplyBiquad(float input, float b0, float b1, float b2,
-            float a1, float a2, ref float z1, ref float z2)
-        {
-            float y = b0 * input + z1;
-            z1 = b1 * input - a1 * y + z2;
-            z2 = b2 * input - a2 * y;
-            return y;
-        }
-
-        /// <summary>
-        /// Read from the circular delay buffer with fractional-sample linear interpolation.
-        /// Must be called after writing the current sample to delayBuffer[delayWritePos].
-        /// </summary>
-        private float ReadDelayed(float delaySamples)
-        {
-            float readPos = delayWritePos - delaySamples;
-            int idx = (int)readPos;
-            float frac = readPos - idx;
-
-            return delayBuffer[idx & DELAY_BUFFER_MASK] * (1f - frac)
-                 + delayBuffer[(idx + 1) & DELAY_BUFFER_MASK] * frac;
         }
     }
 }
