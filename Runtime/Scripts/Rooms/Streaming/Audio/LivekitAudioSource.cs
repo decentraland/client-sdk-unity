@@ -152,6 +152,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private float lipSyncAmplitude;
         private float lipSyncSpeechAmplitude;
+        private float lipSyncBandLow;
+        private float lipSyncBandMid;
+        private float lipSyncBandHigh;
 
         // Bandpass filter state (audio thread only)
         private float hpState;
@@ -176,6 +179,15 @@ namespace LiveKit.Rooms.Streaming.Audio
         /// to reject music and environmental noise outside the voice range.
         /// </summary>
         public float LipSyncSpeechAmplitude => Interlocked.CompareExchange(ref lipSyncSpeechAmplitude, 0f, 0f);
+
+        /// <summary>Goertzel energy in 200–800 Hz band (vowels A, O). Normalized 0..1.</summary>
+        public float LipSyncBandLow => Interlocked.CompareExchange(ref lipSyncBandLow, 0f, 0f);
+
+        /// <summary>Goertzel energy in 800–2500 Hz band (vowels E, I, formant transitions).</summary>
+        public float LipSyncBandMid => Interlocked.CompareExchange(ref lipSyncBandMid, 0f, 0f);
+
+        /// <summary>Goertzel energy in 2500–8000 Hz band (sibilants S, SH, F).</summary>
+        public float LipSyncBandHigh => Interlocked.CompareExchange(ref lipSyncBandHigh, 0f, 0f);
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -299,11 +311,23 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private void ComputeLipSyncAmplitudes(float[] data, int channels)
         {
+            int monoLen = data.Length / channels;
+            if (monoLen == 0) return;
+
             float dt = 1f / sampleRate;
             float hpRc = 1f / (2f * Mathf.PI * speechBandLowHz);
             float hpAlpha = hpRc / (hpRc + dt);
             float lpRc = 1f / (2f * Mathf.PI * speechBandHighHz);
             float lpAlpha = dt / (lpRc + dt);
+
+            // Goertzel coefficients: coeff = 2·cos(2π·f/fs)
+            float gCoeffLow = 2f * Mathf.Cos(2f * Mathf.PI * 500f / sampleRate);
+            float gCoeffMid = 2f * Mathf.Cos(2f * Mathf.PI * 1500f / sampleRate);
+            float gCoeffHigh = 2f * Mathf.Cos(2f * Mathf.PI * 4000f / sampleRate);
+
+            float gL1 = 0f, gL2 = 0f;
+            float gM1 = 0f, gM2 = 0f;
+            float gH1 = 0f, gH2 = 0f;
 
             float fullSum = 0f;
             float bandSum = 0f;
@@ -317,20 +341,36 @@ namespace LiveKit.Rooms.Streaming.Audio
                 {
                     float x = data[i];
 
+                    // Bandpass filter (Step 2.5)
                     float hp = hpAlpha * (hpState + x - hpPrevInput);
                     hpPrevInput = x;
                     hpState = hp;
-
                     float bp = lpState + lpAlpha * (hp - lpState);
                     lpState = bp;
-
                     bandSum += bp * bp;
+
+                    // Goertzel accumulators (Step 3)
+                    float s;
+                    s = x + gCoeffLow * gL1 - gL2; gL2 = gL1; gL1 = s;
+                    s = x + gCoeffMid * gM1 - gM2; gM2 = gM1; gM1 = s;
+                    s = x + gCoeffHigh * gH1 - gH2; gH2 = gH1; gH1 = s;
+
                     bandCount++;
                 }
             }
 
             Interlocked.Exchange(ref lipSyncAmplitude, Mathf.Sqrt(fullSum / data.Length));
             Interlocked.Exchange(ref lipSyncSpeechAmplitude, bandCount > 0 ? Mathf.Sqrt(bandSum / bandCount) : 0f);
+
+            // Goertzel energy: E = s1² + s0² - coeff·s1·s0, normalized by N²
+            float invN2 = 1f / ((float)bandCount * bandCount);
+            float eLow = (gL1 * gL1 + gL2 * gL2 - gCoeffLow * gL1 * gL2) * invN2;
+            float eMid = (gM1 * gM1 + gM2 * gM2 - gCoeffMid * gM1 * gM2) * invN2;
+            float eHigh = (gH1 * gH1 + gH2 * gH2 - gCoeffHigh * gH1 * gH2) * invN2;
+
+            Interlocked.Exchange(ref lipSyncBandLow, Mathf.Sqrt(eLow));
+            Interlocked.Exchange(ref lipSyncBandMid, Mathf.Sqrt(eMid));
+            Interlocked.Exchange(ref lipSyncBandHigh, Mathf.Sqrt(eHigh));
         }
 
         private void OnAudioFilterRead(float[] data, int channels)
