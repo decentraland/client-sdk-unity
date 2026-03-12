@@ -151,13 +151,31 @@ namespace LiveKit.Rooms.Streaming.Audio
         [Range(0f, 1f)] public float pinnaSecondaryStrength = 0f;
 
         private float lipSyncAmplitude;
+        private float lipSyncSpeechAmplitude;
+
+        // Bandpass filter state (audio thread only)
+        private float hpState;
+        private float hpPrevInput;
+        private float lpState;
 
         /// <summary>
-        /// Pre-spatialization RMS amplitude (0..1). Written on the audio thread via
-        /// <see cref="Interlocked.Exchange(ref float, float)"/>, safe to read from
-        /// the main thread for lip sync visualization.
+        /// Speech band filter cutoffs (Hz). Written from the main thread,
+        /// read on the audio thread. Stale reads are harmless.
+        /// </summary>
+        public float speechBandLowHz = 300f;
+        public float speechBandHighHz = 3000f;
+
+        /// <summary>
+        /// Pre-spatialization full-spectrum RMS amplitude (0..1).
         /// </summary>
         public float LipSyncAmplitude => Interlocked.CompareExchange(ref lipSyncAmplitude, 0f, 0f);
+
+        /// <summary>
+        /// Pre-spatialization speech-band RMS amplitude (0..1).
+        /// Bandpass filtered to <see cref="speechBandLowHz"/>–<see cref="speechBandHighHz"/> Hz
+        /// to reject music and environmental noise outside the voice range.
+        /// </summary>
+        public float LipSyncSpeechAmplitude => Interlocked.CompareExchange(ref lipSyncSpeechAmplitude, 0f, 0f);
 
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -279,6 +297,42 @@ namespace LiveKit.Rooms.Streaming.Audio
             }
         }
 
+        private void ComputeLipSyncAmplitudes(float[] data, int channels)
+        {
+            float dt = 1f / sampleRate;
+            float hpRc = 1f / (2f * Mathf.PI * speechBandLowHz);
+            float hpAlpha = hpRc / (hpRc + dt);
+            float lpRc = 1f / (2f * Mathf.PI * speechBandHighHz);
+            float lpAlpha = dt / (lpRc + dt);
+
+            float fullSum = 0f;
+            float bandSum = 0f;
+            int bandCount = 0;
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                fullSum += data[i] * data[i];
+
+                if (i % channels == 0)
+                {
+                    float x = data[i];
+
+                    float hp = hpAlpha * (hpState + x - hpPrevInput);
+                    hpPrevInput = x;
+                    hpState = hp;
+
+                    float bp = lpState + lpAlpha * (hp - lpState);
+                    lpState = bp;
+
+                    bandSum += bp * bp;
+                    bandCount++;
+                }
+            }
+
+            Interlocked.Exchange(ref lipSyncAmplitude, Mathf.Sqrt(fullSum / data.Length));
+            Interlocked.Exchange(ref lipSyncSpeechAmplitude, bandCount > 0 ? Mathf.Sqrt(bandSum / bandCount) : 0f);
+        }
+
         private void OnAudioFilterRead(float[] data, int channels)
         {
             Option<AudioStream> resource = stream.Resource;
@@ -286,10 +340,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                float sum = 0f;
-                for (int i = 0; i < data.Length; i++)
-                    sum += data[i] * data[i];
-                Interlocked.Exchange(ref lipSyncAmplitude, Mathf.Sqrt(sum / data.Length));
+                ComputeLipSyncAmplitudes(data, channels);
 
                 spatialDsp.Process(data, channels, sampleRate, this);
 
