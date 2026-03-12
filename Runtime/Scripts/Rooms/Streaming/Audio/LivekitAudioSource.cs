@@ -49,10 +49,10 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "HeadShadow = EqualPower + frequency-dependent low-pass filter on the far ear, " +
                  "simulating the physical head blocking high frequencies (head shadow effect).\n\n" +
                  "Ref: Van Wanrooij & Van Opstal (2004), J.Neurosci. — head shadow is the dominant ILD cue above 1.5 kHz.")]
-        public ILDMode ildMode = ILDMode.None;
+        public ILDMode ildMode = ILDMode.HeadShadow;
         [Tooltip("How strongly the volume shifts between ears. 0 = center (no pan), 1 = full stereo panning.\n\n" +
                  "Measured ILD at 90° azimuth: ~5 dB at 1 kHz, ~15 dB at 4 kHz, up to ~20 dB at 8 kHz.")]
-        [Range(0f, 1f)] public float ildStrength = 1f;
+        [Range(0f, 1f)] public float ildStrength = 0f;
 
         [Header("Head Shadow Filter (HeadShadow mode only)")]
         [Tooltip("LPF order for the far (contralateral) ear. Real head shadow slope is ~8–10 dB/octave.\n\n" +
@@ -64,7 +64,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "MultiBand3 — 3-band crossover with independent per-band gain (dB). " +
                  "Most accurate: matches measured head shadow curve (<500 Hz: -2 dB, 1-2 kHz: -10 dB, >2 kHz: -20 dB).\n\n" +
                  "Ref: Blauert (1997) — ~5 dB ILD at 1 kHz → ~20 dB at 8 kHz for 90° azimuth source.")]
-        public ShadowFilterOrder shadowFilterOrder = ShadowFilterOrder.TwoPole12dB;
+        public ShadowFilterOrder shadowFilterOrder = ShadowFilterOrder.MultiBand3;
         [Tooltip("Cutoff frequency (Hz) of the LPF applied to the far ear at maximum angle (90° azimuth).\n" +
                  "Physical basis: head diameter ~17.5 cm ≈ wavelength at ~2 kHz. Shadow becomes significant above ~1–1.5 kHz.\n\n" +
                  "1500 Hz = physically realistic (default). Lower values exaggerate the effect for voice (fundamentals 100–300 Hz, formants 300–3000 Hz).")]
@@ -108,12 +108,12 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Uses the Woodworth spherical-head model with linear-interpolated delay line.\n" +
                  "Works independently of ILD — can be combined with any ILD mode.\n\n" +
                  "Ref: Woodworth & Schlosberg (1954) — ITD = r(θ + sin θ)/c for spherical head.")]
-        public bool enableITD;
+        public bool enableITD = true;
         [Tooltip("Radius of the listener's head in meters. Determines max interaural delay.\n" +
                  "Average adult human head radius ≈ 0.0875 m (head width ~17.5 cm).\n" +
                  "Max ITD at this radius: ~0.65 ms ≈ 31 samples at 48 kHz.\n\n" +
                  "Ref: Algazi et al. (2001) — mean head radius 0.0875 m (CIPIC database).")]
-        [Range(0.05f, 0.15f)] public float headRadius = 0.0875f;
+        [Range(0.05f, 0.15f)] public float headRadius = 0.05f;
 
         [Header("HRTF — Pinna / Spectral Cues")]
         [Tooltip("Enable pinna (ear shape) simulation via elevation-dependent notch filters.\n" +
@@ -122,7 +122,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Primary notch: biquad peaking EQ at pinnaNotchFreq, shifted by elevation.\n" +
                  "Secondary notch: at pinnaSecondaryRatio × primary freq (set pinnaSecondaryStrength > 0 to enable).\n\n" +
                  "Ref: Hebrank & Wright (1974) — pinna spectral cues at 6-10 kHz for vertical localization.")]
-        public bool enableHRTF;
+        public bool enableHRTF = true;
         [Tooltip("How much the elevation angle shifts the notch frequency.\n" +
                  "0 = notch at fixed pinnaNotchFreq (no vertical cues), 1 = full shift (±40% of base freq).\n" +
                  "Positive elevation (above) shifts notch up, negative (below) shifts down.\n\n" +
@@ -152,7 +152,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         [Tooltip("Depth of secondary notch relative to primary. 0 = disabled (C1 only), 1 = same depth as primary.\n" +
                  "0.6 default — secondary is typically shallower.\n\n" +
                  "Set to 0 to compare single-notch (C1) vs dual-notch (C2) in real time.")]
-        [Range(0f, 1f)] public float pinnaSecondaryStrength = 0.6f;
+        [Range(0f, 1f)] public float pinnaSecondaryStrength = 0f;
 
         private float azimuthAngle;
         private float elevationAngle;
