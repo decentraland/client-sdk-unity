@@ -200,15 +200,13 @@ namespace LiveKit.Rooms.Streaming.Audio
             elevationAngle = elevation;
         }
 
-        public static LivekitAudioSource New(bool explicitName = false, bool mono = false)
+        public static LivekitAudioSource New(bool explicitName = false, bool spatial = false)
         {
             var gm = new GameObject();
             var audioSource = gm.AddComponent<AudioSource>();
             var source = gm.AddComponent<LivekitAudioSource>();
             source.audioSource = audioSource;
-
-            if (mono)
-                source.ildMode = ILDMode.EqualPower;
+            source.bypassSpatialization = !spatial;
 
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
