@@ -378,7 +378,6 @@ namespace LiveKit.Rooms.Streaming.Audio
             Option<AudioStream> resource = stream.Resource;
             if (resource.Has)
             {
-                System.Array.Clear(data, 0, data.Length);
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
                 ComputeLipSyncAmplitudes(data, channels);
