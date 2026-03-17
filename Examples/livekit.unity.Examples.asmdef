@@ -7,13 +7,17 @@
         "LiveKit",
         "RustAudio"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "DCL_LIVEKIT_CAMERA_VIDEO_INPUT_ON"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }

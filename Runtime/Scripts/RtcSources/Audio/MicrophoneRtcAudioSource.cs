@@ -4,23 +4,35 @@ using Cysharp.Threading.Tasks;
 using LiveKit.Internal;
 using LiveKit.Internal.FFIClients.Requests;
 using LiveKit.Proto;
+using LiveKit.Rooms.Streaming;
 using LiveKit.Rooms.Streaming.Audio;
+using LiveKit.Runtime.Scripts.Audio;
 using Livekit.Types;
 using RichTypes;
 using UnityEngine;
 using UnityEngine.Audio;
+using RustAudio;
+using LiveKit.Scripts.Audio;
+
 
 namespace LiveKit.Audio
 {
-    public class AudioClipRtcAudioSource : IRtcAudioSource
+    public class MicrophoneRtcAudioSource : IRtcAudioSource, IDisposable
     {
-        private const int DEFAULT_NUM_CHANNELS = 2;
-
         private readonly AudioResampler audioResampler = AudioResampler.New();
-        private readonly Mutex<NativeAudioBuffer> buffer = new(new NativeAudioBuffer(200));
+        private readonly Mutex<NativeAudioBufferResampleTee> buffer =
+            new(
+                new NativeAudioBufferResampleTee(
+                    new NativeAudioBuffer(200), default, default
+                )
+            );
 
-        private readonly AudioFilter audioFilter;
-        private readonly AudioSource audioSource;
+        private MicrophoneAudioFilter deviceMicrophoneAudioSource;
+
+        private readonly bool playbackToSpeakers;
+
+        private readonly Apm apm;
+        private readonly ApmReverseStream? reverseStream;
 
         private bool handleBorrowed;
         private bool disposed;
@@ -30,20 +42,34 @@ namespace LiveKit.Audio
 
         private readonly FfiHandle handle;
 
-        public bool IsRecording => audioFilter.IsValid;
+        public MicrophoneInfo MicrophoneInfo => deviceMicrophoneAudioSource.MicrophoneInfo;
+        public bool IsRecording => deviceMicrophoneAudioSource.IsRecording;
 
-        private AudioClipRtcAudioSource(
-            AudioFilter audioFilter,
-            AudioSource audioSource,
-            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume)
+        public WavTeeControl WavTeeControl
         {
-            this.audioFilter = audioFilter;
-            this.audioSource = audioSource;
+            get
+            {
+                string raw = StreamKeyUtils.NewPersistentFilePathByName("raw_microphone");
+                string resampled = StreamKeyUtils.NewPersistentFilePathByName("resampled_microphone");
+                return new(buffer, beforeWavFilePath: raw, afterWavFilePath: resampled);
+            }
+        }
+
+        private MicrophoneRtcAudioSource(
+            MicrophoneAudioFilter deviceMicrophoneAudioSource,
+            Apm apm,
+            ApmReverseStream? apmReverseStream,
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume,
+            bool playbackToSpeakers)
+        {
+            this.deviceMicrophoneAudioSource = deviceMicrophoneAudioSource;
+            this.playbackToSpeakers = playbackToSpeakers;
+            reverseStream = apmReverseStream;
 
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
-            newAudioSource.NumChannels = DEFAULT_NUM_CHANNELS;
+            newAudioSource.NumChannels = deviceMicrophoneAudioSource.MicrophoneInfo.channels;
             newAudioSource.SampleRate = SampleRate.Hz48000.valueHz;
 
             using var options = request.TempResource<AudioSourceOptions>();
@@ -55,6 +81,7 @@ namespace LiveKit.Audio
             using var response = request.Send();
             FfiResponse res = response;
             handle = IFfiHandleFactory.Default.NewFfiHandle(res.NewAudioSource.Source.Handle!.Id);
+            this.apm = apm;
 
             audioVolumeLoopCancellationTokenSource = new CancellationTokenSource();
             audioVolumeLinear = 1; //max
@@ -68,18 +95,45 @@ namespace LiveKit.Audio
             }
         }
 
-        public static AudioClipRtcAudioSource New(
-            AudioClip clip,
-            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume = null)
+        public static Result<MicrophoneRtcAudioSource> New(
+            MicrophoneSelection? microphoneSelection = null,
+            (AudioMixer audioMixer, string audioVolumeParameter)? audioMixerVolume = null,
+            bool playbackToSpeakers = false)
         {
-            GameObject gm = new GameObject(nameof(AudioClipRtcAudioSource));
-            AudioSource audioSource = gm.AddComponent<AudioSource>()!;
-            audioSource.clip = clip;
-            audioSource.Play();
-            AudioFilter filter = gm.AddComponent<AudioFilter>()!;
-            gm.AddComponent<OmitAudioFilter>();
+            MicrophoneSelection selection;
+            if (microphoneSelection.HasValue)
+                selection = microphoneSelection.Value;
+            else
+            {
+                Result<MicrophoneSelection> result = MicrophoneSelection.Default();
+                if (result.Success)
+                    selection = result.Value;
+                else
+                    return Result<MicrophoneRtcAudioSource>.ErrorResult(result.ErrorMessage!);
+            }
 
-            return new AudioClipRtcAudioSource(filter, audioSource, audioMixerVolume);
+            Apm apm = Apm.NewDefault();
+            apm.SetStreamDelay(Apm.EstimateStreamDelayMs());
+
+            Result<ApmReverseStream> reverseStream = ApmReverseStream.New(apm);
+            if (reverseStream.Success == false)
+            {
+                return Result<MicrophoneRtcAudioSource>.ErrorResult(
+                    $"Cannot create reverse stream: {reverseStream.ErrorMessage}"
+                );
+            }
+
+            Result<MicrophoneAudioFilter> source = MicrophoneAudioFilter.New(selection, playbackToSpeakers);
+            if (source.Success == false)
+            {
+                return Result<MicrophoneRtcAudioSource>.ErrorResult(
+                    $"Cannot create source: {source.ErrorMessage}"
+                );
+            }
+
+            return Result<MicrophoneRtcAudioSource>.SuccessResult(
+                new MicrophoneRtcAudioSource(source.Value, apm, reverseStream.Value, audioMixerVolume, playbackToSpeakers)
+            );
         }
 
         FfiHandle IRtcAudioSource.BorrowHandle()
@@ -112,20 +166,23 @@ namespace LiveKit.Audio
         public void Start()
         {
             Stop();
-            if (audioFilter.IsValid == false)
+            if (deviceMicrophoneAudioSource.IsValid == false)
             {
                 Utils.Error("AudioFilter or AudioSource is null - cannot start audio capture");
                 return;
             }
 
-            audioFilter.AudioRead += OnAudioRead;
-            audioSource.Play();
+            deviceMicrophoneAudioSource.AudioRead += OnAudioRead;
+            deviceMicrophoneAudioSource.StartCapture();
+            reverseStream?.Start();
         }
 
         public void Stop()
         {
-            if (audioFilter.IsValid) audioFilter.AudioRead -= OnAudioRead;
-            audioSource.Stop();
+            if (deviceMicrophoneAudioSource.IsValid) deviceMicrophoneAudioSource.AudioRead -= OnAudioRead;
+            deviceMicrophoneAudioSource.StopCapture();
+
+            reverseStream?.Stop();
         }
 
         public void Toggle()
@@ -136,10 +193,33 @@ namespace LiveKit.Audio
                 Start();
         }
 
+        public Result SwitchMicrophone(MicrophoneSelection microphoneSelection)
+        {
+            Result<MicrophoneAudioFilter> newResult = MicrophoneAudioFilter.New(microphoneSelection, playbackToSpeakers);
+            if (newResult.Success == false)
+            {
+                return Result.ErrorResult(
+                    $"Cannot switch microphone to {microphoneSelection.name} due error: {newResult.ErrorMessage}");
+            }
+
+            var wasRecording = IsRecording;
+            Stop();
+            deviceMicrophoneAudioSource.Dispose();
+            deviceMicrophoneAudioSource = newResult.Value;
+
+            if (wasRecording)
+            {
+                Start();
+            }
+
+            return Result.SuccessResult();
+        }
+
         private void OnAudioRead(Span<float> data, int channels, int sampleRate)
         {
             using var guard = buffer.Lock();
 
+            // TODO should be pooled
             PCMSample[] converted = new PCMSample[data.Length];
 
             // cache to don't access volatile variable for each sample 
@@ -148,9 +228,11 @@ namespace LiveKit.Audio
             for (int i = 0; i < data.Length; i++)
             {
                 var sample = data[i] * volume;
+                // TODO should be SIMD
                 converted[i] = PCMSample.FromUnitySample(sample);
             }
 
+            guard.Value.TryWavTeeBeforeFrame(converted, (uint)channels, (uint)sampleRate);
             guard.Value.Write(converted, (uint)channels, (uint)sampleRate);
             while (true)
             {
@@ -159,7 +241,27 @@ namespace LiveKit.Audio
                 if (frameResult.Has == false) break;
                 using AudioFrame rawFrame = frameResult.Value;
                 using OwnedAudioFrame frame =
-                    audioResampler.LiveKitCompatibleRemixAndResample(rawFrame, DEFAULT_NUM_CHANNELS);
+                    audioResampler.LiveKitCompatibleRemixAndResample(rawFrame);
+                guard.Value.TryWavTeeAfterFrame(frame);
+
+                Span<PCMSample> audioBytes = frame.AsPCMSampleSpan();
+
+                var apmFrame = ApmFrame.New(
+                    audioBytes,
+                    frame.NumChannels,
+                    frame.SamplesPerChannel,
+                    new SampleRate(frame.SampleRate),
+                    out string? error
+                );
+                if (error != null)
+                {
+                    Utils.Error($"Error during creation ApmFrame: {error}");
+                    break;
+                }
+
+                var apmResult = apm.ProcessStream(apmFrame);
+                if (apmResult.Success == false)
+                    Utils.Error($"Error during processing stream: {apmResult.ErrorMessage}");
 
                 ProcessAudioFrame(frame);
             }
@@ -205,8 +307,10 @@ namespace LiveKit.Audio
 
             using (var guard = buffer.Lock()) guard.Value.Dispose();
 
+            apm.Dispose();
             audioResampler.Dispose();
-            UnityEngine.Object.Destroy(audioFilter.gameObject);
+            reverseStream?.Dispose();
+            deviceMicrophoneAudioSource.Dispose();
 
             if (handleBorrowed == false)
                 handle.Dispose();
