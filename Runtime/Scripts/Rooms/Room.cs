@@ -363,7 +363,7 @@ namespace LiveKit.Rooms
                         using var memory = dataInfo.ReadAndDispose(memoryPool);
                         if(string.IsNullOrEmpty(dataReceivedPacket.ParticipantIdentity))
                         {
-                            Utils.Debug($"DataPacketReceived with empty participant identity, skipping.");
+                            LiveKit.Internal.Utils.Debug($"DataPacketReceived with empty participant identity, skipping.");
                             break;  
                         }
                         var participant = this.ParticipantEnsured(dataReceivedPacket.ParticipantIdentity!);
