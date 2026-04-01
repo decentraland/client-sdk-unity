@@ -21,7 +21,8 @@ namespace LiveKit.Rooms.Streaming.Audio
         ThreePole18dB,
         FourPole24dB,
         Biquad12dB,
-        MultiBand3
+        MultiBand3,
+        DualShelf
     }
 
     public class LivekitAudioSource : MonoBehaviour
@@ -58,7 +59,10 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "FourPole (24 dB/oct) — very aggressive, 'phone in a pillow' effect.\n" +
                  "Biquad (12 dB/oct + Q) — same slope as TwoPole but with adjustable resonance peak.\n" +
                  "MultiBand3 — 3-band crossover with independent per-band gain (dB). " +
-                 "Most accurate: matches measured head shadow curve (<500 Hz: -2 dB, 1-2 kHz: -10 dB, >2 kHz: -20 dB).\n\n" +
+                 "Most accurate: matches measured head shadow curve (<500 Hz: -2 dB, 1-2 kHz: -10 dB, >2 kHz: -20 dB).\n" +
+                 "DualShelf — two cascaded first-order high shelves + base gain. " +
+                 "Same 3-band shaping as MultiBand3 but with smooth S-curve transitions instead of crossover steps. " +
+                 "11 FLOP/sample vs 25 for MultiBand3 (2.3× faster). Reuses MultiBand3 settings.\n\n" +
                  "Ref: Blauert (1997) — ~5 dB ILD at 1 kHz → ~20 dB at 8 kHz for 90° azimuth source.")]
         public ShadowFilterOrder shadowFilterOrder = ShadowFilterOrder.MultiBand3;
         [Tooltip("Cutoff frequency (Hz) of the LPF applied to the far ear at maximum angle (90° azimuth).\n" +
@@ -74,7 +78,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                  "Ref: Robert Bristow-Johnson, Audio EQ Cookbook.")]
         [Range(0.5f, 3f)] public float biquadQ = 0.707f;
 
-        [Header("MultiBand3 Crossover (MultiBand3 mode only)")]
+        [Header("MultiBand3 / DualShelf Settings")]
         [Tooltip("Crossover frequency between Low and Mid bands (Hz).\n" +
                  "Below this frequency: sound passes almost unchanged (head is transparent to long wavelengths).\n" +
                  "500 Hz default — head diameter ~17.5 cm is much smaller than wavelength at 500 Hz (~69 cm).\n\n" +

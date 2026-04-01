@@ -40,6 +40,10 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float mbLpfZ1L, mbLpfZ2L, mbHpfZ1L, mbHpfZ2L;
         private float mbLpfZ1R, mbLpfZ2R, mbHpfZ1R, mbHpfZ2R;
 
+        // DualShelf first-order high shelf states (xPrev, yPrev per shelf per ear)
+        private float dsXp1L, dsYp1L, dsXp1R, dsYp1R;
+        private float dsXp2L, dsYp2L, dsXp2R, dsYp2R;
+
         // HRTF primary pinna notch states (peaking EQ biquad, both ears)
         private float hrfZ1L, hrfZ2L, hrfZ1R, hrfZ2R;
 
@@ -150,6 +154,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             bool useBiquad = src.shadowFilterOrder == ShadowFilterOrder.Biquad12dB;
             bool useMultiBand = src.shadowFilterOrder == ShadowFilterOrder.MultiBand3;
+            bool useDualShelf = src.shadowFilterOrder == ShadowFilterOrder.DualShelf;
 
             float shadowAmount = Mathf.Abs(Mathf.Sin(az)) * src.shadowStrength * Mathf.Cos(el);
             bool shadowOnLeft = az >= 0f;
@@ -160,7 +165,21 @@ namespace LiveKit.Rooms.Streaming.Audio
             float mbHB0 = 0f, mbHB1 = 0f, mbHB2 = 0f, mbHA1 = 0f, mbHA2 = 0f;
             float mbGainLow = 1f, mbGainMid = 1f, mbGainHigh = 1f;
 
-            if (useMultiBand)
+            float dsS1B0 = 0f, dsS1B1 = 0f, dsS1A1 = 0f;
+            float dsS2B0 = 0f, dsS2B1 = 0f, dsS2A1 = 0f;
+            float dsBaseGain = 1f;
+
+            if (useDualShelf)
+            {
+                dsBaseGain = Mathf.Pow(10f, src.lowBandDb * shadowAmount / 20f);
+                ComputeFirstOrderHighShelf(src.crossoverLowMid,
+                    (src.midBandDb - src.lowBandDb) * shadowAmount, sampleRate,
+                    out dsS1B0, out dsS1B1, out dsS1A1);
+                ComputeFirstOrderHighShelf(src.crossoverMidHigh,
+                    (src.highBandDb - src.midBandDb) * shadowAmount, sampleRate,
+                    out dsS2B0, out dsS2B1, out dsS2A1);
+            }
+            else if (useMultiBand)
             {
                 mbGainLow = Mathf.Pow(10f, src.lowBandDb * shadowAmount / 20f);
                 mbGainMid = Mathf.Pow(10f, src.midBandDb * shadowAmount / 20f);
@@ -214,7 +233,16 @@ namespace LiveKit.Rooms.Streaming.Audio
             for (int i = 0; i < samplesPerChannel; i++)
             {
                 int offset = i * channels;
-                if (useMultiBand)
+                if (useDualShelf)
+                {
+                    if (shadowOnLeft)
+                        data[offset] = ApplyDualShelf(data[offset],
+                            dsS1B0, dsS1B1, dsS1A1, dsS2B0, dsS2B1, dsS2A1, dsBaseGain, true);
+                    else
+                        data[offset + 1] = ApplyDualShelf(data[offset + 1],
+                            dsS1B0, dsS1B1, dsS1A1, dsS2B0, dsS2B1, dsS2A1, dsBaseGain, false);
+                }
+                else if (useMultiBand)
                 {
                     if (shadowOnLeft)
                         data[offset] = ApplyMultiBandFilter(data[offset], mbLB0, mbLB1, mbLB2, mbLA1, mbLA2,
@@ -348,6 +376,55 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             float mid = input - low - high;
             return low * gLow + mid * gMid + high * gHigh;
+        }
+
+        /// <summary>
+        /// Computes first-order high shelf coefficients via bilinear transform.
+        /// Unity gain at DC, gain = 10^(dBgain/20) at Nyquist, transition at freq.
+        /// Analog prototype: H(s) = A·(s + ωc/√A) / (s + ωc·√A).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ComputeFirstOrderHighShelf(float freq, float dBgain, int sampleRate,
+            out float b0, out float b1, out float a1)
+        {
+            float A = Mathf.Pow(10f, dBgain / 20f);
+            float K = Mathf.Tan(Mathf.PI * freq / sampleRate);
+            float sqA = Mathf.Sqrt(A);
+            float norm = 1f / (1f + K * sqA);
+            b0 = sqA * (sqA + K) * norm;
+            b1 = sqA * (K - sqA) * norm;
+            a1 = (K * sqA - 1f) * norm;
+        }
+
+        /// <summary>
+        /// Two cascaded first-order high shelves + base gain.
+        /// Approximates MultiBand3 staircase with smooth S-curve transitions.
+        /// 11 FLOP/sample: 2 shelves × (3 mul + 2 add) + 1 mul (base gain).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float ApplyDualShelf(float input,
+            float s1B0, float s1B1, float s1A1,
+            float s2B0, float s2B1, float s2A1,
+            float baseGain, bool isLeft)
+        {
+            float y1, y2;
+
+            if (isLeft)
+            {
+                y1 = s1B0 * input + s1B1 * dsXp1L - s1A1 * dsYp1L;
+                dsXp1L = input; dsYp1L = y1;
+                y2 = s2B0 * y1 + s2B1 * dsXp2L - s2A1 * dsYp2L;
+                dsXp2L = y1; dsYp2L = y2;
+            }
+            else
+            {
+                y1 = s1B0 * input + s1B1 * dsXp1R - s1A1 * dsYp1R;
+                dsXp1R = input; dsYp1R = y1;
+                y2 = s2B0 * y1 + s2B1 * dsXp2R - s2A1 * dsYp2R;
+                dsXp2R = y1; dsYp2R = y2;
+            }
+
+            return y2 * baseGain;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
