@@ -31,7 +31,7 @@ namespace LiveKit.Rooms.DataPipes
                 )
         {
             this.room = room;
-            room.DataReceived += (byte[] data, RemoteParticipant participant, DataPacketKind? kind) =>
+            room.DataReceived += (byte[] data, RemoteParticipant participant, DataPacketKind? kind, string topic) =>
             {
                 // participant is null for server-sent packets (no sender) — skip until a participant is available
                 if (participant == null) return;
@@ -43,7 +43,7 @@ namespace LiveKit.Rooms.DataPipes
                     DataPacketKind.RELIABLE => LKDataPacketKind.KindReliable,
                     null => LKDataPacketKind.KindLossy, // by default treat the kind as lossy
                 };
-                DataReceived?.Invoke(data, wrap, EMPTY_TOPIC, packetKind);
+                DataReceived?.Invoke(data, wrap, topic ?? EMPTY_TOPIC, packetKind);
             };
         }
 
