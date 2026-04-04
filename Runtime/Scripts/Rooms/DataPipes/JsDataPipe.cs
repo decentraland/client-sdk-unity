@@ -33,6 +33,9 @@ namespace LiveKit.Rooms.DataPipes
             this.room = room;
             room.DataReceived += (byte[] data, RemoteParticipant participant, DataPacketKind? kind) =>
             {
+                // participant is null for server-sent packets (no sender) — skip until a participant is available
+                if (participant == null) return;
+
                 LKParticipant wrap = new LKParticipant(participant, qualityMap);
                 LKDataPacketKind packetKind = kind switch
                 {
