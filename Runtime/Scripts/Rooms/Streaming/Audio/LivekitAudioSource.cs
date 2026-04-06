@@ -31,7 +31,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
-        private AudioSource audioSource = null!;
+        public AudioSource AudioSource { get; private set; } = null!;
 
         internal readonly SpatialAudioDSP spatialDsp = new ();
 
@@ -211,7 +211,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             var gm = new GameObject();
             var audioSource = gm.AddComponent<AudioSource>();
             var source = gm.AddComponent<LivekitAudioSource>();
-            source.audioSource = audioSource;
+            source.AudioSource = audioSource;
             source.bypassSpatialization = !spatial;
 
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
@@ -245,17 +245,17 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void Play()
         {
-            audioSource.Play();
+            AudioSource.Play();
         }
 
         public void Stop()
         {
-            audioSource.Stop();
+            AudioSource.Stop();
         }
 
         public void SetVolume(float target)
         {
-            audioSource.volume = target;
+            AudioSource.volume = target;
         }
 
         public Result ToggleRecordWavOutput()
