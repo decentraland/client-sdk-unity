@@ -18,7 +18,6 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
-        private AudioSource audioSource = null!;
 
         private float azimuth;
         private float elevation;
@@ -26,28 +25,27 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float prevGainR = 0.707f;
         public float IldStrength { private get; set; } = 1f;
         public bool SmoothPanning { private get; set; }
-
         public bool BypassSpatialization { private get; set; }
+        
+        private WavWriter? wavWriter;
+        private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
+
+        public bool IsWavActive => wavWriter.HasValue;
+        public AudioSource AudioSource { get; private set; } = null!;
+
+        public static LivekitAudioSource New(bool explicitName = false)
+        {
+            var gm = new GameObject();
+            var source = gm.AddComponent<LivekitAudioSource>();
+            source.AudioSource = gm.AddComponent<AudioSource>();
+            if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
+            return source;
+        }
         
         public void SetSpatialAngles(float azimuth, float elevation)
         {
             this.azimuth = azimuth;
             this.elevation = elevation;
-        }
-
-        private WavWriter? wavWriter;
-        private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
-
-        public bool IsWavActive => wavWriter.HasValue;
-
-        public static LivekitAudioSource New(bool explicitName = false)
-        {
-            var gm = new GameObject();
-            var audioSource = gm.AddComponent<AudioSource>();
-            var source = gm.AddComponent<LivekitAudioSource>();
-            source.audioSource = audioSource;
-            if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
-            return source;
         }
 
         public void Construct(Weak<AudioStream> audioStream)
@@ -77,17 +75,17 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public void Play()
         {
-            audioSource.Play();
+            AudioSource.Play();
         }
 
         public void Stop()
         {
-            audioSource.Stop();
+            AudioSource.Stop();
         }
 
         public void SetVolume(float target)
         {
-            audioSource.volume = target;
+            AudioSource.volume = target;
         }
 
         public Result ToggleRecordWavOutput()
