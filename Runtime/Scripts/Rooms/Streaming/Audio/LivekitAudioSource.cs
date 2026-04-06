@@ -25,7 +25,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float prevGainR = 0.707f;
         public float IldStrength { private get; set; } = 1f;
         public bool SmoothPanning { private get; set; }
-        public bool BypassSpatialization { private get; set; }
+        public bool Spatialize { private get; set; }
         
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -33,12 +33,12 @@ namespace LiveKit.Rooms.Streaming.Audio
         public bool IsWavActive => wavWriter.HasValue;
         public AudioSource AudioSource { get; private set; } = null!;
 
-        public static LivekitAudioSource New(bool explicitName = false, bool spatial = false)
+        public static LivekitAudioSource New(bool explicitName = false, bool isSpatial = false)
         {
             var gm = new GameObject();
             var source = gm.AddComponent<LivekitAudioSource>();
             source.AudioSource = gm.AddComponent<AudioSource>();
-            source.BypassSpatialization = !spatial;
+            source.Spatialize = isSpatial;
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
         }
@@ -153,7 +153,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                if (!BypassSpatialization && channels >= 2)
+                if (Spatialize && channels >= 2)
                     ApplySpatialPanning(data, channels);
 
                 if (wavWriter.HasValue)
