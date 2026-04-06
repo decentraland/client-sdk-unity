@@ -33,11 +33,12 @@ namespace LiveKit.Rooms.Streaming.Audio
         public bool IsWavActive => wavWriter.HasValue;
         public AudioSource AudioSource { get; private set; } = null!;
 
-        public static LivekitAudioSource New(bool explicitName = false)
+        public static LivekitAudioSource New(bool explicitName = false, bool spatial = false)
         {
             var gm = new GameObject();
             var source = gm.AddComponent<LivekitAudioSource>();
             source.AudioSource = gm.AddComponent<AudioSource>();
+            source.BypassSpatialization = !spatial;
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
         }
