@@ -13,6 +13,7 @@ namespace LiveKit.Rooms.Streaming.Audio
     {
         private static readonly ProfilerMarker s_MarkerEqualPower = new ("LiveKit.Spatial.ILD.EqualPower");
         private const float HALF_PI = math.PI * 0.5f;
+        
         private static ulong counter;
 
         private int sampleRate;
@@ -25,8 +26,9 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float prevGainR = 0.707f;
         public float IldStrength { private get; set; } = 1f;
         public bool SmoothPanning { private get; set; }
-        public bool BypassSpatialization { private get; set; }
 
+        public bool BypassSpatialization { private get; set; }
+        
         public void SetSpatialAngles(float azimuth, float elevation)
         {
             this.azimuth = azimuth;

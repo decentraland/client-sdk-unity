@@ -5,7 +5,8 @@
         "RichTypes",
         "UniTask",
         "RustAudio",
-        "RustAudio.Def"
+        "RustAudio.Def",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
