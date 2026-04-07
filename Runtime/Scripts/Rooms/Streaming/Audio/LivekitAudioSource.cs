@@ -23,11 +23,11 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float elevation;
         private float prevGainL = 0.707f;
         private float prevGainR = 0.707f;
-        
+
         [field: Header("SPATIALIZATION")]
-        [field: SerializeField] public bool Spatialize { private get; set; }
+        [field: SerializeField] public bool Spatialize { private get; set; } = false;
         [field: SerializeField, Range(0f, 1f)] public float IldStrength { private get; set; } = 0.75f;
-        [field: SerializeField] public bool SmoothPanning { private get; set; }
+        [field: SerializeField] public bool SmoothPanning { private get; set; } = false;
         
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
