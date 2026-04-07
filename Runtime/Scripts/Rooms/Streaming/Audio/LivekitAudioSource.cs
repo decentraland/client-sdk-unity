@@ -26,7 +26,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         
         [field: Header("SPATIALIZATION")]
         [field: SerializeField] public bool Spatialize { private get; set; }
-        [field: SerializeField] public float IldStrength { private get; set; } = 1f;
+        [field: SerializeField, Range(0f, 1f)] public float IldStrength { private get; set; } = 0.75f;
         [field: SerializeField] public bool SmoothPanning { private get; set; }
         
         private WavWriter? wavWriter;
