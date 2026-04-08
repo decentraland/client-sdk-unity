@@ -19,15 +19,15 @@ namespace LiveKit.Rooms.Streaming.Audio
         private int sampleRate;
         private Weak<AudioStream> stream = Weak<AudioStream>.Null;
 
-        private float azimuth;
-        private float elevation;
+        private volatile float azimuth;
+        private volatile float elevation;
         private float prevGainL = 0.707f;
         private float prevGainR = 0.707f;
 
-        [field: Header("SPATIALIZATION")]
-        [field: SerializeField] public bool Spatialize { private get; set; } = false;
-        [field: SerializeField, Range(0f, 1f)] public float IldStrength { private get; set; } = 0.75f;
-        [field: SerializeField] public bool SmoothPanning { private get; set; } = false;
+        [Header("SPATIALIZATION")]
+        [SerializeField] private volatile bool spatialize;
+        [SerializeField, Range(0f, 1f)] private volatile float ildStrength = 0.75f;
+        [SerializeField] private volatile bool smoothPanning;
         
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -40,7 +40,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             var gm = new GameObject();
             var source = gm.AddComponent<LivekitAudioSource>();
             source.AudioSource = gm.AddComponent<AudioSource>();
-            source.Spatialize = isSpatial;
+            source.spatialize = isSpatial;
             if (explicitName) source.name = $"{nameof(LivekitAudioSource)}_{counter++}";
             return source;
         }
@@ -49,6 +49,13 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             this.azimuth = azimuth;
             this.elevation = elevation;
+        }
+
+        public void SetSpatialSettings(bool spatialize, float ildStrength, bool smoothPanning)
+        {
+            this.spatialize = spatialize;
+            this.ildStrength = ildStrength;
+            this.smoothPanning = smoothPanning;
         }
 
         public void Construct(Weak<AudioStream> audioStream)
@@ -155,7 +162,7 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                if (Spatialize && channels >= 2)
+                if (spatialize && channels >= 2)
                     ApplySpatialPanning(data, channels);
 
                 if (wavWriter.HasValue)
@@ -184,7 +191,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             int samplesPerChannel = data.Length / channels;
 
-            float pan = math.sin(azimuth) * math.cos(elevation) * IldStrength;
+            float pan = math.sin(azimuth) * math.cos(elevation) * ildStrength;
             float p = (pan + 1f) * 0.5f;
             float gainL = math.cos(p * HALF_PI);
             float gainR = math.sin(p * HALF_PI);
@@ -194,8 +201,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             for (int i = 0; i < samplesPerChannel; i++)
             {
                 float t = i * invLen;
-                float gL = SmoothPanning ? math.lerp(prevGainL, gainL, t) : gainL;
-                float gR = SmoothPanning ? math.lerp(prevGainR, gainR, t) : gainR;
+                float gL = smoothPanning ? math.lerp(prevGainL, gainL, t) : gainL;
+                float gR = smoothPanning ? math.lerp(prevGainR, gainR, t) : gainR;
                     
                 int offset = i * channels;
                 float mono = data[offset];
