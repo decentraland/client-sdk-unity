@@ -11,7 +11,7 @@ namespace LiveKit.Rooms.Streaming.Audio
 {
     public class LivekitAudioSource : MonoBehaviour
     {
-        private static readonly ProfilerMarker s_MarkerEqualPower = new ("LiveKit.Spatial.ILD.EqualPower");
+        private static readonly ProfilerMarker markerEqualPaowerDSP = new ("LiveKit.Spatial.ILD.EqualPower");
         private const float HALF_PI = math.PI * 0.5f;
         
         private static ulong counter;
@@ -187,7 +187,7 @@ namespace LiveKit.Rooms.Streaming.Audio
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplySpatialPanning(float[] data, int channels)
         {
-            using var _ = s_MarkerEqualPower.Auto();
+            using var _ = markerEqualPaowerDSP.Auto();
 
             int samplesPerChannel = data.Length / channels;
 
