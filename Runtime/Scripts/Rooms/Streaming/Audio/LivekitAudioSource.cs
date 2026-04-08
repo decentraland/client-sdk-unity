@@ -162,7 +162,8 @@ namespace LiveKit.Rooms.Streaming.Audio
             {
                 resource.Value.ReadAudio(data.AsSpan(), channels, sampleRate);
 
-                if (spatialize && channels >= 2)
+                // TODO: handle 5.1 and 7.1 sound system cases
+                if (spatialize && channels == 2)
                     ApplySpatialPanning(data, channels);
 
                 if (wavWriter.HasValue)
