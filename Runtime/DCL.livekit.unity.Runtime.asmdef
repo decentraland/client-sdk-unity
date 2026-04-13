@@ -6,7 +6,8 @@
         "UniTask",
         "RustAudio",
         "RustAudio.Def",
-        "LiveKitBridge"
+        "LiveKitBridge",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
