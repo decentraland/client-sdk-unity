@@ -73,12 +73,17 @@ namespace LiveKit.Rooms.Participants
             TrackPublished?.Invoke(track);
         }
 
-        public void UnPublish(string sid, out LiveKit.Rooms.TrackPublications.TrackPublication unpublishedTrack)
+        public void UnPublish(string sid, out LiveKit.Rooms.TrackPublications.TrackPublication? unpublishedTrack)
         {
-            var publication = tracks[sid] ?? throw new Exception("Track not found");
-            tracks.Remove(sid);
-            TrackUnpublished?.Invoke(publication);
-            unpublishedTrack = publication;
+            if (tracks.TryRemove(sid, out var publication))
+            {
+                TrackUnpublished?.Invoke(publication);
+                unpublishedTrack = publication;
+            }
+            else
+            {
+                unpublishedTrack = null;
+            }
         }
 
         public LiveKit.Rooms.TrackPublications.TrackPublication TrackPublication(string sid)
@@ -88,7 +93,7 @@ namespace LiveKit.Rooms.Participants
 
         public void AddTrack(LiveKit.Rooms.TrackPublications.TrackPublication track)
         {
-            tracks.Add(track.Sid, track);
+            tracks[track.Sid] = track;
         }
 
         public void UpdateMeta(string meta)
