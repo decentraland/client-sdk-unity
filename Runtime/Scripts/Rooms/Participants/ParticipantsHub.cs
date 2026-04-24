@@ -4,6 +4,7 @@ using System.Collections.Generic;
 
 namespace LiveKit.Rooms.Participants
 {
+    // Implementation is thread-safe
     public class ParticipantsHub : IMutableParticipantsHub
     {
         private readonly ConcurrentDictionary<string, LKParticipant> remoteParticipants = new();
