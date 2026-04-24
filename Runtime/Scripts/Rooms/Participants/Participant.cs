@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;;
 using System.Diagnostics.CodeAnalysis;
 using LiveKit.Internal;
 using LiveKit.Proto;
