@@ -46,7 +46,8 @@ namespace LiveKit.Rooms.Participants
 
         public Room Room { get; private set; } = null!;
 
-        private readonly Dictionary<string, LiveKit.Rooms.TrackPublications.TrackPublication> tracks = new();
+        // It's ok to have concurrent dictionary here because impl won't be used in WebGL
+        private readonly ConcurrentDictionary<string, LiveKit.Rooms.TrackPublications.TrackPublication> tracks = new();
 
         private ParticipantInfo info = null!;
 
