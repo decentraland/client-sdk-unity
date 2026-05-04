@@ -13,9 +13,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 {
     public class LivekitAudioSource : MonoBehaviour
     {
-        private static readonly ProfilerMarker markerEqualPaowerDSP = new ("LiveKit.Spatial.ILD.EqualPower");
-        private const float HALF_PI = math.PI * 0.5f;
-        
+        private static readonly ProfilerMarker markerSpatialPanningDSP = new ("LiveKit.Spatial.ILD.Exponential");
+        private const float ALPHA = 2.0f;
+
         private static ulong counter;
 
         private int sampleRate;
@@ -23,8 +23,8 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         private volatile float azimuth;
         private volatile float elevation;
-        private float prevGainL = 0.707f;
-        private float prevGainR = 0.707f;
+        private float prevGainL = 1.0f;
+        private float prevGainR = 1.0f;
 
         [Header("SPATIALIZATION")]
         [SerializeField] private volatile bool spatialize;
@@ -190,14 +190,13 @@ namespace LiveKit.Rooms.Streaming.Audio
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplySpatialPanning(float[] data, int channels)
         {
-            using var _ = markerEqualPaowerDSP.Auto();
+            using var _ = markerSpatialPanningDSP.Auto();
 
             int samplesPerChannel = data.Length / channels;
 
             float pan = math.sin(azimuth) * math.cos(elevation) * ildStrength;
-            float p = (pan + 1f) * 0.5f;
-            float gainL = math.cos(p * HALF_PI);
-            float gainR = math.sin(p * HALF_PI);
+            float gainL = math.exp(-ALPHA * math.max(0f, pan));
+            float gainR = math.exp(-ALPHA * math.max(0f, -pan));
 
             if (smoothPanning)
             {
