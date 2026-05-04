@@ -27,9 +27,12 @@ namespace LiveKit.Rooms.Streaming.Audio
         private float prevGainR = 1.0f;
 
         [Header("SPATIALIZATION")]
+        [Tooltip("Enable L/R panning based on azimuth/elevation set via SetSpatialAngles.")]
         [SerializeField] private volatile bool spatialize;
+        [Tooltip("Interaural Level Difference (ILD) strength. 0 = no panning, 1 = full silence on far ear at 90°.")]
         [SerializeField, Range(0f, 1f)] private volatile float ildStrength = 0.75f;
-        [SerializeField] private volatile bool smoothPanning;
+        [Tooltip("Gain ramp duration in milliseconds at buffer start to prevent clicks on rapid azimuth changes. 0 = no ramp (cheapest, may click).")]
+        [SerializeField, Range(0f, 30f)] private volatile float panningRampMs = 5f;
         
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -53,11 +56,11 @@ namespace LiveKit.Rooms.Streaming.Audio
             this.elevation = elevation;
         }
 
-        public void SetSpatialSettings(bool spatialize, float ildStrength, bool smoothPanning)
+        public void SetSpatialSettings(bool spatialize, float ildStrength, float panningRampMs)
         {
             this.spatialize = spatialize;
             this.ildStrength = ildStrength;
-            this.smoothPanning = smoothPanning;
+            this.panningRampMs = panningRampMs;
         }
 
         public void Construct(Weak<AudioStream> audioStream)
@@ -198,22 +201,27 @@ namespace LiveKit.Rooms.Streaming.Audio
             float gainL = math.exp(-ALPHA * math.max(0f, pan));
             float gainR = math.exp(-ALPHA * math.max(0f, -pan));
 
-            if (smoothPanning)
-            {
-                float invLen = 1f / samplesPerChannel;
+            int rampLen = panningRampMs > 0f
+                ? math.min((int)(panningRampMs * sampleRate * 0.001f), samplesPerChannel)
+                : 0;
 
-                for (int i = 0; i < samplesPerChannel; i++)
+            // click smoothing for fast moves if panningRampMs are specified (>0)
+            {
+                float invRamp = 1f / rampLen;
+
+                for (int i = 0; i < rampLen; i++)
                 {
-                    float t = i * invLen;
+                    float t = i * invRamp;
                     int offset = i * channels;
                     float mono = data[offset];
                     data[offset]     = mono * math.lerp(prevGainL, gainL, t);
                     data[offset + 1] = mono * math.lerp(prevGainR, gainR, t);
                 }
             }
-            else
+
+            // basic panning
             {
-                for (int i = 0; i < samplesPerChannel; i++)
+                for (int i = rampLen; i < samplesPerChannel; i++)
                 {
                     int offset = i * channels;
                     float mono = data[offset];
@@ -221,7 +229,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                     data[offset + 1] = mono * gainR;
                 }
             }
-            
+
             prevGainL = gainL;
             prevGainR = gainR;
         }
