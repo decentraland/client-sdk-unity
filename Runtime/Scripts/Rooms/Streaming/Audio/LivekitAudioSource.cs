@@ -228,7 +228,7 @@ namespace LiveKit.Rooms.Streaming.Audio
                 ? math.min((int)(panningRampMs * sampleRate * 0.001f), samplesPerChannel)
                 : 0;
 
-            // click smoothing for fast moves if panningRampMs are specified (>0)
+            // click smoothing for fast moves if rampNeeded
             {
                 float invRamp = 1f / rampLen;
 
