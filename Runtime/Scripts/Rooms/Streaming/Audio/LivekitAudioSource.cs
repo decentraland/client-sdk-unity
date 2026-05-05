@@ -70,11 +70,10 @@ namespace LiveKit.Rooms.Streaming.Audio
             this.elevation = elevation;
         }
 
-        public void SetSpatialSettings(bool spatialize, float ildStrength, float panningRampMs)
+        public void SetSpatialSettings(bool spatialize, float ildStrength)
         {
             this.spatialize = spatialize;
             this.ildStrength = ildStrength;
-            this.panningRampMs = panningRampMs;
         }
 
         public void Construct(Weak<AudioStream> audioStream)
