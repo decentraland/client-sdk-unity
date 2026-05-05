@@ -13,8 +13,14 @@ namespace LiveKit.Rooms.Streaming.Audio
 {
     public class LivekitAudioSource : MonoBehaviour
     {
+        public enum IldProfile : byte
+        {
+            Subtle,   // α=1.2, ≈ −8 dB at 90° — average across voice band
+            Moderate, // α=1.5, ≈ −10 dB at 90° — slightly emphasized
+            Strong,   // α=2.0, ≈ −13 dB at 90° — high-freq end of natural ILD
+        }
+
         private static readonly ProfilerMarker markerSpatialPanningDSP = new ("LiveKit.Spatial.ILD.Exponential");
-        private const float ALPHA = 2.0f;
 
         private static ulong counter;
 
@@ -29,8 +35,14 @@ namespace LiveKit.Rooms.Streaming.Audio
         [Header("SPATIALIZATION")]
         [Tooltip("Enable L/R panning based on azimuth/elevation set via SetSpatialAngles.")]
         [SerializeField] private volatile bool spatialize;
+        
+        [Header("IDL")]
         [Tooltip("Interaural Level Difference (ILD) strength. 0 = no panning, 1 = full silence on far ear at 90°.")]
         [SerializeField, Range(0f, 1f)] private volatile float ildStrength = 0.75f;
+        [Tooltip("ILD attenuation curve at 90°: Subtle ≈ −8 dB (natural voice avg), Moderate ≈ −10 dB, Strong ≈ −13 dB (high-freq end).")]
+        [SerializeField] private IldProfile ildProfile = IldProfile.Strong;
+        
+        [Header("CLICK PREVENTION")]
         [Tooltip("Gain ramp duration in milliseconds at buffer start to prevent clicks on rapid azimuth changes. 0 = no ramp (cheapest, may click).")]
         [SerializeField, Range(0f, 30f)] private volatile float panningRampMs = 5f;
         [Tooltip("Min per-buffer gain change that activates the ramp. ~0.05 is an audible click; default 0.01 is a conservative threshold (5x safety margin). Lower = safer but more lerp work.")]
@@ -199,9 +211,16 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             int samplesPerChannel = data.Length / channels;
 
+            float alpha = ildProfile switch
+            {
+                IldProfile.Subtle => 1.2f,
+                IldProfile.Moderate => 1.5f,
+                _ => 2.0f,
+            };
+            
             float pan = math.sin(azimuth) * math.cos(elevation) * ildStrength;
-            float gainL = math.exp(-ALPHA * math.max(0f, pan));
-            float gainR = math.exp(-ALPHA * math.max(0f, -pan));
+            float gainL = math.exp(-alpha * math.max(0f, pan));
+            float gainR = math.exp(-alpha * math.max(0f, -pan));
 
             float gainDelta = math.max(math.abs(gainL - prevGainL), math.abs(gainR - prevGainR));
             bool rampNeeded = panningRampMs > 0f && gainDelta > gainDeltaThreshold;
