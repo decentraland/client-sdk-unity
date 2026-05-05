@@ -33,6 +33,8 @@ namespace LiveKit.Rooms.Streaming.Audio
         [SerializeField, Range(0f, 1f)] private volatile float ildStrength = 0.75f;
         [Tooltip("Gain ramp duration in milliseconds at buffer start to prevent clicks on rapid azimuth changes. 0 = no ramp (cheapest, may click).")]
         [SerializeField, Range(0f, 30f)] private volatile float panningRampMs = 5f;
+        [Tooltip("Min per-buffer gain change that activates the ramp. ~0.05 is an audible click; default 0.01 is a conservative threshold (5x safety margin). Lower = safer but more lerp work.")]
+        [SerializeField, Range(0f, 0.1f)] private volatile float gainDeltaThreshold = 0.01f;
         
         private WavWriter? wavWriter;
         private PCMSample[] wavBuffer = Array.Empty<PCMSample>();
@@ -201,7 +203,9 @@ namespace LiveKit.Rooms.Streaming.Audio
             float gainL = math.exp(-ALPHA * math.max(0f, pan));
             float gainR = math.exp(-ALPHA * math.max(0f, -pan));
 
-            int rampLen = panningRampMs > 0f
+            float gainDelta = math.max(math.abs(gainL - prevGainL), math.abs(gainR - prevGainR));
+            bool rampNeeded = panningRampMs > 0f && gainDelta > gainDeltaThreshold;
+            int rampLen = rampNeeded
                 ? math.min((int)(panningRampMs * sampleRate * 0.001f), samplesPerChannel)
                 : 0;
 
