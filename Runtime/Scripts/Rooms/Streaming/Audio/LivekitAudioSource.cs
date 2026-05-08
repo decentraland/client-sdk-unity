@@ -15,10 +15,19 @@ namespace LiveKit.Rooms.Streaming.Audio
     {
         public enum IldProfile : byte
         {
-            Subtle,   // α=1.2, ≈ −8 dB at 90° — average across voice band
-            Moderate, // α=1.5, ≈ −10 dB at 90° — slightly emphasized
-            Strong,   // α=2.0, ≈ −13 dB at 90° — high-freq end of natural ILD
+            Subtle   = 0,
+            Moderate = 1,
+            Strong   = 2,
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float AsAlpha(IldProfile profile) =>
+            profile switch
+            {
+                IldProfile.Subtle => 1.2f, // α=1.2, ≈ −8 dB at 90° — average across voice band
+                IldProfile.Moderate => 1.5f, // α=1.5, ≈ −10 dB at 90° — slightly emphasized
+                _ => 2.0f, // α=2.0, ≈ −13 dB at 90° — high-freq end of natural ILD
+            };
 
         private static readonly ProfilerMarker markerSpatialPanningDSP = new ("LiveKit.Spatial.ILD.Exponential");
 
@@ -210,13 +219,9 @@ namespace LiveKit.Rooms.Streaming.Audio
 
             int samplesPerChannel = data.Length / channels;
 
-            float alpha = ildProfile switch
-            {
-                IldProfile.Subtle => 1.2f,
-                IldProfile.Moderate => 1.5f,
-                _ => 2.0f,
-            };
-            
+            float alpha = AsAlpha(ildProfile);
+
+
             float pan = math.sin(azimuth) * math.cos(elevation) * ildStrength;
             float gainL = math.exp(-alpha * math.max(0f, pan));
             float gainR = math.exp(-alpha * math.max(0f, -pan));
