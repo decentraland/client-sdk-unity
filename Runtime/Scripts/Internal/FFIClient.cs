@@ -126,7 +126,7 @@ namespace LiveKit.Internal
             {
             }
 
-            Utils.Debug("FFIServer - Initialized");
+            Utils.Debug($"FFIServer - Initialized, capture logs: {captureLogs}");
             initialized = true;
         }
 
@@ -198,7 +198,7 @@ namespace LiveKit.Internal
                         NativeMethods.FfiDropHandle(handle);
 
 #if LK_VERBOSE
-                        Debug.Log($"FFIClient response of type: {response.MessageCase} with asyncId: {AsyncId(response)}");
+                        Utils.Debug($"FFIClient response of type: {response.MessageCase} with asyncId: {AsyncId(response)}");
 #endif
 
                         return response;
@@ -221,6 +221,9 @@ namespace LiveKit.Internal
             return;
 #endif
 
+            System.Threading.Thread current = System.Threading.Thread.CurrentThread;
+            if (current.IsBackground == false) current.IsBackground = true;
+
             try
             {
                 if (isDisposed) return;
@@ -235,7 +238,7 @@ namespace LiveKit.Internal
                 {
                     case FfiEvent.MessageOneofCase.Logs:
 
-                        Debug.Log($"LK_DEBUG: {response.Logs.Records}");
+                        Utils.Debug($"LK_DEBUG: {response.Logs.Records}");
                         break;
                     case FfiEvent.MessageOneofCase.PublishData:
                         break;
