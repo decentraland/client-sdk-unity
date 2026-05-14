@@ -153,26 +153,17 @@ namespace LiveKit.Internal
             }
 
             isDisposed = true;
+
+            // Stop all rooms synchronously
+            // The rust lk implementation should also correctly dispose WebRTC
             initialized = false;
-            Utils.Debug("FFIServer - Disposed. Dropping the native part is skiped");
-            // silent drop reason:
-            // https://github.com/livekit/rust-sdks/blob/main/livekit-ffi/src/server/requests.rs
-            //
-            /// Dispose the server, close all rooms and clean up all handles
-            /// It is not mandatory to call this function.
-            /// fn on_dispose(
-            ///     server: &'static FfiServer,
-            ///     dispose: proto::DisposeRequest,
-            /// ) -> FfiResult<proto::DisposeResponse> {
-            ///     *server.config.lock() = None;
-            /// 
-            ///     if !dispose.r#async {
-            ///         server.async_runtime.block_on(server.dispose());
-            ///         Ok(proto::DisposeResponse::default())
-            ///     } else {
-            ///         todo!("async dispose");
-            ///     }
-            /// }
+            SendRequest(
+                new FfiRequest
+                {
+                    Dispose = new DisposeRequest()
+                }
+            );
+            Utils.Debug("FFIServer - Disposed");
         }
 
         public void Release(FfiResponse response)
