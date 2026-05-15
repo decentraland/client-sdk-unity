@@ -221,6 +221,9 @@ namespace LiveKit.Internal
             return;
 #endif
 
+            // Prevents app freeze on exit due the registered threads via IL2CPP context
+            // We already had this issue before and the full explanation is here:
+            // https://support.unity.com/hc/en-us/requests/3055850
             System.Threading.Thread current = System.Threading.Thread.CurrentThread;
             if (current.IsBackground == false) current.IsBackground = true;
 
