@@ -22,6 +22,12 @@ namespace LiveKit.Rooms.Streaming.Audio
         {
             return stream.AudioStreamInfo;
         }
+
+        public int GetLastFrameReceivedAt(StreamKey streamKey)
+        {
+            var weak = ActiveStream(streamKey);
+            return weak.Resource.Has ? weak.Resource.Value.LastFrameReceivedAt : -1;
+        }
     }
 }
 

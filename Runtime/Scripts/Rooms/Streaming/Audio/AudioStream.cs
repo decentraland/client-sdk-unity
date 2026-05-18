@@ -28,6 +28,8 @@ namespace LiveKit.Rooms.Streaming.Audio
 
         public WavTeeControl WavTeeControl => currentInternal.WavTeeControl;
 
+        public int LastFrameReceivedAt => currentInternal.LastFrameReceivedAt;
+
         public AudioStream(StreamKey streamKey, LiveKit.Rooms.Tracks.ITrack track)
         {
             this.streamKey = streamKey;
@@ -106,10 +108,13 @@ namespace LiveKit.Rooms.Streaming.Audio
             );
 
         private bool disposed;
+        private int lastFrameReceivedAt = -1;
 
         public readonly AudioStreamInfo audioStreamInfo;
         private readonly uint internalChannels;
         private readonly uint internalSampleRate;
+
+        public int LastFrameReceivedAt => Volatile.Read(ref lastFrameReceivedAt);
 
         public WavTeeControl WavTeeControl
         {
@@ -221,6 +226,8 @@ namespace LiveKit.Rooms.Streaming.Audio
                 );
                 return;
             }
+
+            Volatile.Write(ref lastFrameReceivedAt, Environment.TickCount);
 
             using var guard = buffer.Lock();
             guard.Value.Write(frame);
