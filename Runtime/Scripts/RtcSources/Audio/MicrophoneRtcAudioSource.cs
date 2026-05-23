@@ -70,7 +70,9 @@ namespace LiveKit.Audio
             using var request = FFIBridge.Instance.NewRequest<NewAudioSourceRequest>();
             var newAudioSource = request.request;
             newAudioSource.Type = AudioSourceType.AudioSourceNative;
-            newAudioSource.NumChannels = deviceMicrophoneAudioSource.MicrophoneInfo.channels;
+            // Clamp to stereo — voice chat only needs mono/stereo, and the
+            // underlying WebRTC AudioFrame crashes with >8 channels.
+            newAudioSource.NumChannels = Math.Min(deviceMicrophoneAudioSource.MicrophoneInfo.channels, 2);
             newAudioSource.SampleRate = SampleRate.Hz48000.valueHz;
 
             using var options = request.TempResource<AudioSourceOptions>();
