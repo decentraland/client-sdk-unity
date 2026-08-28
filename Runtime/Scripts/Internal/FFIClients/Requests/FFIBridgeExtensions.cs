@@ -29,8 +29,8 @@ namespace LiveKit.Internal.FFIClients.Requests
             if (UseTransportAllForLoopbackUrls && IsLoopbackLiveKitUrl(url))
             {
                 using var rtcConfig = request.TempResource<RtcConfig>();
-                rtcConfig.IceTransportType = IceTransportType.TransportAll;
-                roomOptions.RtcConfig = rtcConfig;
+                rtcConfig.value.IceTransportType = IceTransportType.TransportAll;
+                roomOptions.value.RtcConfig = rtcConfig.value;
             }
 
             var response = request.Send();
@@ -41,7 +41,7 @@ namespace LiveKit.Internal.FFIClients.Requests
         private static bool IsLoopbackLiveKitUrl(string url)
         {
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
-                || (uri.Scheme != Uri.UriSchemeWs && uri.Scheme != Uri.UriSchemeWss))
+                || (uri.Scheme != "ws" && uri.Scheme != "wss"))
                 return false;
 
             return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
