@@ -257,10 +257,8 @@ namespace LiveKit.Rooms
                     break;
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.LocalTrackUnpublished:
                 {
-                    if (Participants.LocalParticipant().Tracks.ContainsKey(e.LocalTrackUnpublished!.PublicationSid))
+                    if (Participants.LocalParticipant().TryGetTrackPublication(e.LocalTrackUnpublished!.PublicationSid!, out var publication))
                     {
-                        var publication = Participants.LocalParticipant()
-                            .TrackPublication(e.LocalTrackUnpublished.PublicationSid!);
                         LocalTrackUnpublished?.Invoke(publication, Participants.LocalParticipant());
                     }
                     else
@@ -272,10 +270,8 @@ namespace LiveKit.Rooms
                     break;
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.LocalTrackPublished:
                 {
-                    if (Participants.LocalParticipant().Tracks.ContainsKey(e.LocalTrackPublished!.TrackSid))
+                    if (Participants.LocalParticipant().TryGetTrackPublication(e.LocalTrackPublished!.TrackSid!, out var publication))
                     {
-                        var publication = Participants.LocalParticipant()
-                            .TrackPublication(e.LocalTrackPublished.TrackSid!);
                         LocalTrackPublished?.Invoke(publication, Participants.LocalParticipant());
                     }
                     else
@@ -305,8 +301,14 @@ namespace LiveKit.Rooms
                 {
                     var info = e.TrackSubscribed!.Track!.Info!;
                     var participant = participantsHub.RemoteParticipantEnsured(e.TrackSubscribed.ParticipantIdentity!);
-                    var publication = participant.TrackPublication(info.Sid!);
                     var trackHandle = ffiHandleFactory.NewFfiHandle((IntPtr)e.TrackSubscribed.Track.Handle.Id);
+
+                    if (!participant.TryGetTrackPublication(info.Sid!, out var publication))
+                    {
+                        LiveKit.Internal.Utils.Debug("Unable to find track publication on subscribe: " + info.Sid);
+                        ffiHandleFactory.Release(trackHandle);
+                        break;
+                    }
 
                     var track = tracksFactory.NewTrack(trackHandle, info, this, participant);
                     publication.UpdateTrack(track);
@@ -316,7 +318,13 @@ namespace LiveKit.Rooms
                 case LiveKit.Proto.RoomEvent.MessageOneofCase.TrackUnsubscribed:
                 {
                     var participant = this.ParticipantEnsured(e.TrackUnsubscribed!.ParticipantIdentity!);
-                    var publication = participant.TrackPublication(e.TrackUnsubscribed.TrackSid!);
+
+                    if (!participant.TryGetTrackPublication(e.TrackUnsubscribed.TrackSid!, out var publication))
+                    {
+                        LiveKit.Internal.Utils.Debug("Unable to find track publication on unsubscribe: " + e.TrackUnsubscribed.TrackSid);
+                        break;
+                    }
+
                     publication.RemoveTrack(out var removedTrack);
                     TrackUnsubscribed?.Invoke(removedTrack!, publication, participant);
                 }
@@ -325,7 +333,13 @@ namespace LiveKit.Rooms
                 {
                     var trackMuted = e.TrackMuted!;
                     var participant = this.ParticipantEnsured(trackMuted.ParticipantIdentity!);
-                    var publication = participant.TrackPublication(trackMuted.TrackSid!);
+
+                    if (!participant.TryGetTrackPublication(trackMuted.TrackSid!, out var publication))
+                    {
+                        LiveKit.Internal.Utils.Debug("Unable to find track publication on mute: " + trackMuted.TrackSid);
+                        break;
+                    }
+
                     publication.UpdateMuted(true);
                     TrackMuted?.Invoke(publication, participant);
                 }
@@ -334,7 +348,13 @@ namespace LiveKit.Rooms
                 {
                     var trackUnmuted = e.TrackUnmuted!;
                     var participant = this.ParticipantEnsured(trackUnmuted.ParticipantIdentity!);
-                    var publication = participant.TrackPublication(trackUnmuted.TrackSid!);
+
+                    if (!participant.TryGetTrackPublication(trackUnmuted.TrackSid!, out var publication))
+                    {
+                        LiveKit.Internal.Utils.Debug("Unable to find track publication on unmute: " + trackUnmuted.TrackSid);
+                        break;
+                    }
+
                     publication.UpdateMuted(false);
                     TrackUnmuted?.Invoke(publication, participant);
                 }

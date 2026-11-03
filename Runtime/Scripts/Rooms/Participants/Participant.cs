@@ -87,9 +87,9 @@ namespace LiveKit.Rooms.Participants
             }
         }
 
-        public LiveKit.Rooms.TrackPublications.TrackPublication TrackPublication(string sid)
+        public bool TryGetTrackPublication(string sid, [NotNullWhen(true)] out LiveKit.Rooms.TrackPublications.TrackPublication? publication)
         {
-            return tracks[sid] ?? throw new Exception("Track publication not found");
+            return tracks.TryGetValue(sid, out publication);
         }
 
         public void AddTrack(LiveKit.Rooms.TrackPublications.TrackPublication track)
