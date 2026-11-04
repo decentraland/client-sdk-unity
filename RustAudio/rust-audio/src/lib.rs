@@ -333,7 +333,13 @@ fn rust_audio_input_stream_new_internal(device_name: &str) -> Result<(StreamId, 
         .find(|c| c.sample_format() == cpal::SampleFormat::F32)
         .ok_or(anyhow!("device doesn't support f32 samples"))?;
 
-    let config = config_range.with_max_sample_rate().config();
+    let mut config = config_range.with_max_sample_rate().config();
+
+    // Clamp to stereo — voice chat only needs mono/stereo, and WebRTC's
+    // AudioFrame asserts num_channels <= kMaxConcurrentChannels (8).
+    // Multi-channel audio interfaces (e.g. Scarlett 18i20 with 20 channels)
+    // would otherwise cause a fatal crash.
+    config.channels = config.channels.min(2);
 
     let next_id = NEXT_STREAM_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let moved_id = next_id;
